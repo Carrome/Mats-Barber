@@ -67,7 +67,7 @@ font-family:'Archivo',system-ui,-apple-system,sans-serif;color:var(--tinta);back
 
 /* blocos */
 .mf-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px}
-.mf-panel{background:var(--papel);border:1px solid var(--linha);border-radius:16px;padding:18px}
+.mf-panel{background:var(--papel);border:1px solid var(--amarelo);border-radius:16px;padding:18px}
 .mf-grid{display:grid;gap:14px}
 @media (min-width:760px){.mf-g2{grid-template-columns:1fr 1fr}.mf-g3{grid-template-columns:repeat(3,1fr)}}
 .mf-row{display:flex;align-items:center;gap:10px}

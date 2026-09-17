@@ -108,3 +108,14 @@ describe("meta em todos os períodos", () => {
     expect(screen.getByText(/% da meta de R\$\s*6\.000,00/)).toBeTruthy();
   });
 });
+
+describe("aviso de atendimentos sem fechar", () => {
+  it("não aparece no painel (fica só na agenda)", () => {
+    const db = baseVazia();
+    db.clientes.push({ id: "c1", nome: "Ana" });
+    db.agendamentos.push({ id: "a1", data: hojeYmd(), hora: "00:00", tipo: "avulso", clienteId: "c1", servicoId: "corte", valor: 45, status: "agendado", pagamento: "", obs: "" });
+    abrirPainel({ db });
+    expect(screen.queryByText(/sem fechar/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Fechar agora" })).toBeNull();
+  });
+});

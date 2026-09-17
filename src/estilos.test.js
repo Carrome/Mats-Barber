@@ -78,6 +78,10 @@ describe("tema de cores", () => {
     expect(media?.[1].trim()).toBe(forcado?.[1].trim());
   });
 
+  it("os painéis têm contorno fino no amarelo da logo", () => {
+    expect(CSS).toContain(".mf-panel{background:var(--papel);border:1px solid var(--amarelo)");
+  });
+
   it("preto de fundo (marca) não é usado como cor de texto (some no escuro)", () => {
     expect(CSS).not.toMatch(/[;{]color:var\(--marca\)/);
   });

@@ -3,15 +3,15 @@
    ===================================================================== */
 import React, { useMemo, useState } from "react";
 import {
-  Clock, Eye, EyeOff, FileSpreadsheet, MessageCircle, Wallet,
+  Eye, EyeOff, FileSpreadsheet, MessageCircle, Wallet,
 } from "lucide-react";
 import {
   addDays, brl, dataLonga, ddmm, ddmmaa, entregarArquivo, gerarCsv, hojeYmd,
-  momento, nomeMes, parse, plural, primeiroNome, whats, ymd,
+  momento, nomeMes, parse, primeiroNome, whats, ymd,
 } from "../util.js";
 import {
   atendeNoDia, clienteDe, comumFlex, diaFechado, fatiasRosca, infoPacote, intervaloPeriodo,
-  metaPeriodo, pendentes, PERIODOS, recebidoNoDia, resumoPeriodo, servicoDe, TIPOS_ATENDIMENTO, vendasPorServico,
+  metaPeriodo, PERIODOS, recebidoNoDia, resumoPeriodo, servicoDe, TIPOS_ATENDIMENTO, vendasPorServico,
 } from "../regras.js";
 import { useAgora, Seg } from "../componentes.jsx";
 import { Rosca } from "./Rosca.jsx";
@@ -55,7 +55,6 @@ export function Painel({ db, notify, abrir, ocultar, alternarOcultar }) {
   const falta = Math.max(0, metaP - f.total - f.previsto);
 
   // Hoje e próximo dia de atendimento
-  const pend = pendentes(db, agora);
   const agsDia = (data) => db.agendamentos.filter((a) => a.data === data && TIPOS_ATENDIMENTO.includes(a.tipo)).sort((a, b) => a.hora.localeCompare(b.hora));
   const deHoje = agsDia(hoje);
   const proximo = deHoje.find((a) => a.status === "agendado" && momento(a.data, a.hora) > agora);
@@ -99,13 +98,6 @@ export function Painel({ db, notify, abrir, ocultar, alternarOcultar }) {
           {ocultar ? <EyeOff size={22} /> : <Eye size={22} />}
         </button>
       </div>
-      {pend.length > 0 && (
-        <div className="mf-alerta">
-          <Clock size={18} />
-          <span className="mf-grow"><b>{plural(pend.length, "atendimento sem fechar", "atendimentos sem fechar")}.</b> Marque se foram feitos para o faturamento ficar certo.</span>
-          <button className="mf-btn sm poste" onClick={abrir.pendencias}>Fechar agora</button>
-        </div>
-      )}
 
       <div className="mf-grid mf-g2">
           <section className="mf-panel mf-stack" style={{ gap: 10 }}>

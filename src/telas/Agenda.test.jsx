@@ -1,9 +1,14 @@
 // @vitest-environment jsdom
 import React from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { SlotSheet } from "./Agenda.jsx";
+import { Agenda, SlotSheet } from "./Agenda.jsx";
 import { baseVazia } from "../dados.js";
+
+beforeAll(() => {
+  globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  globalThis.matchMedia = globalThis.matchMedia || ((q) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
+});
 
 afterEach(cleanup);
 
@@ -44,5 +49,18 @@ describe("Desfazer venda da vaga", () => {
     const ag = fn(dbComVagaVendida()).agendamentos.find((a) => a.id === "a1");
     expect(ag).toMatchObject({ tipo: "oferta", clienteId: null, status: "agendado", pagamento: "", deOferta: false, valor: 35 });
     expect(p.notify).toHaveBeenCalledWith(expect.any(String), true);
+  });
+});
+
+describe("aviso de atendimentos sem fechar", () => {
+  it("aparece na agenda, com o botão de fechar agora", () => {
+    const db = baseVazia();
+    db.clientes.push({ id: "c1", nome: "João Silva" });
+    db.agendamentos.push({ id: "a1", data: "2020-01-02", hora: "10:00", tipo: "avulso", clienteId: "c1", servicoId: "corte", valor: 45, status: "agendado", pagamento: "", obs: "" });
+    const abrir = { agenda: vi.fn(), aba: vi.fn(), cliente: vi.fn(), pacote: vi.fn(), horario: vi.fn(), pendencias: vi.fn() };
+    render(<Agenda db={db} update={vi.fn()} notify={vi.fn()} ask={vi.fn()} abrir={abrir} />);
+    expect(screen.getByText(/sem fechar/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Fechar agora" }));
+    expect(abrir.pendencias).toHaveBeenCalled();
   });
 });
