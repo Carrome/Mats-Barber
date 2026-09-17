@@ -175,11 +175,11 @@ export function Agenda({ db, update, notify, ask, abrir, dataInicial }) {
       <div className="mf-row mf-wrapr mf-between">
         <p className="sub">{rs.at} atendimentos, {rs.lv} horários livres{rs.of ? `, ${rs.of} em oferta` : ""} nesta semana</p>
         <div className="mf-legenda">
-          <span><i style={{ borderLeft: "4px solid #1F3A32" }} />Normal</span>
-          <span><i style={{ background: "#E0E8F5", borderLeft: "4px solid #2A4E8A" }} />Pacote</span>
-          <span><i style={{ background: "#F3E8CD", borderLeft: "4px solid #B8892B" }} />Campanha</span>
-          <span><i style={{ background: "repeating-linear-gradient(-45deg,#C8372D 0 3px,#fff 3px 5px,#2A4E8A 5px 8px,#fff 8px 10px)" }} />Vaga em oferta</span>
-          <span><i style={{ background: "repeating-linear-gradient(45deg,#DDE1DD 0 3px,#F2F3F2 3px 6px)" }} />Pausa/bloqueio</span>
+          <span><i style={{ borderLeft: "4px solid var(--acento)" }} />Normal</span>
+          <span><i style={{ background: "var(--azul-c)", borderLeft: "4px solid var(--azul)" }} />Pacote</span>
+          <span><i style={{ background: "var(--latao-c)", borderLeft: "4px solid var(--latao)" }} />Campanha</span>
+          <span><i style={{ background: "repeating-linear-gradient(-45deg,var(--poste) 0 3px,var(--papel) 3px 5px,var(--azul) 5px 8px,var(--papel) 8px 10px)" }} />Vaga em oferta</span>
+          <span><i style={{ background: "repeating-linear-gradient(45deg,var(--trilha) 0 3px,var(--realce) 3px 6px)" }} />Pausa/bloqueio</span>
         </div>
       </div>
 
@@ -469,7 +469,7 @@ function DetalheAgendamento({ db, update, notify, ask, abrir, ag, onClose }) {
           <div><b>{camp?.nome || "Vaga em oferta"}</b><p className="sub">{serv?.nome}{passou ? ", horário já passou sem venda" : ""}</p></div>
           <span className="mf-row">
             {serv && serv.preco !== ag.valor && <span className="mf-strike">{brl(serv.preco)}</span>}
-            <span className="mf-price" style={{ fontSize: 28, color: "#C8372D" }}>{brl(ag.valor)}</span>
+            <span className="mf-price" style={{ fontSize: 28, color: "var(--poste-tx)" }}>{brl(ag.valor)}</span>
           </span>
         </div>
         <Campo label="Quem comprou a vaga?"><ClientePicker db={db} update={update} valor={clienteId} onChange={(id) => { setClienteId(id); setPacoteId(null); setComoPagou("oferta"); }} /></Campo>
@@ -544,7 +544,7 @@ function DetalheAgendamento({ db, update, notify, ask, abrir, ag, onClose }) {
         <Seg valor={ag.status} onChange={(s) => mudar({ status: s, pagamento: s === "concluido" && editavel && !ag.pagamento ? cfg.pagamentoPadrao || "" : ag.pagamento })}
           opcoes={[["agendado", "Agendado"], ["concluido", "Concluído"], ["faltou", "Faltou"]]} />
       </Campo>
-      {passou && ag.status === "agendado" && <small style={{ color: "#7A5710" }}>O horário já passou. Marque se foi concluído ou se o cliente faltou.</small>}
+      {passou && ag.status === "agendado" && <small style={{ color: "var(--latao-tx)" }}>O horário já passou. Marque se foi concluído ou se o cliente faltou.</small>}
       {editavel && ag.status === "concluido" && (
         <Campo label="Pagamento">
           <div className="mf-quick">
@@ -560,9 +560,16 @@ function DetalheAgendamento({ db, update, notify, ask, abrir, ag, onClose }) {
       </div>
       <button className="mf-link perigo" onClick={() => {
         if (ag.deOferta) {
-          mudar({ tipo: "oferta", clienteId: null, pacoteId: null, status: "agendado", deOferta: false, pagamento: "", valor: ag.valorOferta ?? ag.valor, servicoId: ag.servicoId });
-          notify("Venda desfeita, vaga voltou para oferta");
-          onClose();
+          const aviso = ag.status === "concluido" ? " O atendimento já está concluído e o pagamento sai do faturamento." : ag.status === "faltou" ? " A falta registrada também é apagada." : "";
+          ask(`Desfazer a venda da vaga para ${cli?.nome || "cliente"} (${ddmm(ag.data)} às ${ag.hora})? O horário volta a ser oferta.${aviso}`, () => {
+            update((d) => {
+              const a = d.agendamentos.find((x) => x.id === ag.id);
+              if (a) Object.assign(a, { tipo: "oferta", clienteId: null, pacoteId: null, status: "agendado", deOferta: false, pagamento: "", valor: ag.valorOferta ?? ag.valor, servicoId: ag.servicoId });
+              return d;
+            }, true);
+            notify("Venda desfeita, vaga voltou para oferta", true);
+            onClose();
+          });
         } else ask(`Cancelar o horário de ${cli?.nome || "cliente"} (${ddmm(ag.data)} às ${ag.hora})?`, () => remover("Agendamento cancelado"));
       }}>{ag.deOferta ? "Desfazer venda da vaga" : "Cancelar agendamento"}</button>
     </div>
@@ -590,9 +597,9 @@ function Remarcar({ db, update, notify, ag, onVoltar, onClose }) {
     <div className="mf-stack">
       <p className="sub">Horário atual: {dataLonga(ag.data)} às {ag.hora}</p>
       <Campo label="Nova data"><input className="mf-input" type="date" value={data} onChange={(e) => setData(e.target.value)} /></Campo>
-      {data && !atende && <small style={{ color: "#7A5710" }}>A barbearia normalmente não atende neste dia da semana.</small>}
-      {fechado && <small style={{ color: "#C8372D" }}>Dia marcado como fechado: {fechado.motivo}.</small>}
-      {pac && data && !venc && <small style={{ color: "#C8372D" }}>Atenção: o pacote {pac.codigo} não vale nesta data (vencido ou sem saldo).</small>}
+      {data && !atende && <small style={{ color: "var(--latao-tx)" }}>A barbearia normalmente não atende neste dia da semana.</small>}
+      {fechado && <small style={{ color: "var(--poste-tx)" }}>Dia marcado como fechado: {fechado.motivo}.</small>}
+      {pac && data && !venc && <small style={{ color: "var(--poste-tx)" }}>Atenção: o pacote {pac.codigo} não vale nesta data (vencido ou sem saldo).</small>}
       <Campo label="Horários livres">
         {livres.length === 0 ? <small>Nenhum horário livre da grade nesta data.</small> : (
           <div className="mf-quick">{livres.map((h) => <button type="button" key={h} onClick={() => mover(h)}>{h}</button>)}</div>
@@ -604,7 +611,7 @@ function Remarcar({ db, update, notify, ag, onVoltar, onClose }) {
           <button className="mf-btn sm" disabled={!horaValida(outra) || ocupadoOutra || !data} onClick={() => mover(outra)}>Mover</button>
         </div>
       </Campo>
-      {ocupadoOutra && <small style={{ color: "#C8372D" }}>Já existe algo marcado às {outra}.</small>}
+      {ocupadoOutra && <small style={{ color: "var(--poste-tx)" }}>Já existe algo marcado às {outra}.</small>}
       <button className="mf-btn alt full" onClick={onVoltar}>Voltar</button>
     </div>
   );
@@ -667,7 +674,7 @@ function DiaSheet({ db, update, notify, ask, data, onClose, onEncaixe }) {
               <input className="mf-input" type="time" value={hora} onChange={(e) => setHora(e.target.value)} style={{ maxWidth: 140 }} aria-label="Horário do encaixe" />
               <button className="mf-btn sm" disabled={!horaValida(hora) || ocupada} onClick={() => onEncaixe(hora)}>Continuar</button>
             </div>
-            {ocupada && <small style={{ color: "#C8372D" }}>Já existe algo às {hora}. Abra o horário na agenda.</small>}
+            {ocupada && <small style={{ color: "var(--poste-tx)" }}>Já existe algo às {hora}. Abra o horário na agenda.</small>}
           </section>
         )}
 
@@ -687,7 +694,7 @@ function DiaSheet({ db, update, notify, ask, data, onClose, onEncaixe }) {
               <input className="mf-input" value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Motivo" />
               <button className="mf-btn sm poste" onClick={fechar}>Fechar dia</button>
             </div>
-            {ags.some((a) => a.status === "agendado") && <small style={{ color: "#7A5710" }}><AlertTriangle size={13} style={{ verticalAlign: -2 }} /> Há clientes marcados neste dia.</small>}
+            {ags.some((a) => a.status === "agendado") && <small style={{ color: "var(--latao-tx)" }}><AlertTriangle size={13} style={{ verticalAlign: -2 }} /> Há clientes marcados neste dia.</small>}
           </>)}
         </section>
       </div>

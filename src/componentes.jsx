@@ -206,7 +206,7 @@ export function ClientePicker({ db, update, valor, onChange, permitirNovo = true
   return (
     <div className="mf-stack" style={{ gap: 8 }}>
       <div style={{ position: "relative" }}>
-        <Search size={16} style={{ position: "absolute", left: 12, top: 14, color: "#66706B" }} />
+        <Search size={16} style={{ position: "absolute", left: 12, top: 14, color: "var(--cinza)" }} />
         <input className="mf-input" style={{ paddingLeft: 36 }} placeholder={placeholder || "Buscar cliente por nome ou telefone"} value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       <div className="mf-opts">

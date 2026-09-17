@@ -164,7 +164,7 @@ export default function App() {
   if (!db) {
     return (
       <div className="mf"><style>{CSS}</style>
-        <div className="mf-loading"><div className="mf-pole" /><span className="dsp" style={{ fontSize: 28 }}>Matts Flex</span></div>
+        <div className="mf-loading"><img className="mf-logo" src="icons/logo.png" alt="Matheu's Barber" /><span className="dsp" style={{ fontSize: 28 }}>Matts Flex</span></div>
       </div>
     );
   }
@@ -179,7 +179,7 @@ export default function App() {
     <div className="mf" data-tema={tema}>
       <style>{CSS}</style>
       <nav className="mf-rail" aria-label="Menu principal">
-        <div className="marca"><div className="mf-pole" /><div><div className="nome">Matts Flex</div><div className="loja">{db.config.nome}</div></div></div>
+        <div className="marca"><img className="mf-logo" src="icons/logo.png" alt="" /><div><div className="nome">Matts Flex</div><div className="loja">{db.config.nome}</div></div></div>
         {NAV.map(([id, label, Icon]) => (
           <button key={id} className={aba === id ? "on" : ""} onClick={() => go(id)} aria-current={aba === id ? "page" : undefined}>
             <Icon size={19} />{label}{id === "agenda" && qtdPend > 0 && <span className="mf-cont" aria-label={`${qtdPend} pendentes`}>{qtdPend}</span>}
@@ -190,7 +190,7 @@ export default function App() {
 
       <main className="mf-main">
         <header className="mf-top">
-          <div className="mf-pole" />
+          <img className="mf-logo" src="icons/logo.png" alt="" />
           <div style={{ minWidth: 0 }}><div className="nome">Matts Flex</div><div className="loja mf-ellip">{db.config.nome}</div></div>
           <div className="sp" />
           <button className="mf-iconbtn" onClick={() => setVenda({ cliente: null })} aria-label="Vender plano"><Ticket size={21} /></button>

@@ -56,7 +56,7 @@ export function Clientes({ db, update, notify, abrir }) {
         <button className="mf-btn" onClick={() => setEditar({})}><UserPlus size={17} />Novo cliente</button>
       </div>
       <div style={{ position: "relative" }}>
-        <Search size={17} style={{ position: "absolute", left: 13, top: 14, color: "#66706B" }} />
+        <Search size={17} style={{ position: "absolute", left: 13, top: 14, color: "var(--cinza)" }} />
         <input className="mf-input" style={{ paddingLeft: 38 }} placeholder="Buscar por nome ou telefone" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       <div className="mf-chips">
@@ -106,7 +106,7 @@ export function Clientes({ db, update, notify, abrir }) {
                   </button>
                   {chamar && c.telefone
                     ? <a className="mf-btn sm alt" href={whats(c.telefone, msgRetorno(db, c, r), db.config.ddd)} target="_blank" rel="noreferrer" aria-label={`Chamar ${c.nome} no WhatsApp`}><MessageCircle size={14} />Chamar</a>
-                    : <ChevronRight size={18} color="#66706B" />}
+                    : <ChevronRight size={18} color="#6B6B6B" />}
                 </div>
               );
             })}
@@ -145,7 +145,7 @@ export function ClienteForm({ db, update, notify, cliente, onClose, onAbrir }) {
           <Campo label="WhatsApp"><input className="mf-input" inputMode="tel" placeholder="(22) 99999-9999" value={tel} onChange={(e) => setTel(e.target.value)} onBlur={() => setTel(formatarTel(tel))} /></Campo>
           <Campo label="Aniversário"><input className="mf-input" inputMode="numeric" placeholder="dd/mm" value={aniv} onChange={(e) => setAniv(mascaraDDMM(e.target.value))} /></Campo>
         </div>
-        {!anivOk && <small style={{ color: "#C8372D" }}>Aniversário inválido. Use dia/mês, ex.: 07/03.</small>}
+        {!anivOk && <small style={{ color: "var(--poste-tx)" }}>Aniversário inválido. Use dia/mês, ex.: 07/03.</small>}
         {parecido && (
           <div className="mf-dupe">
             <span className="mf-grow">Parece que já existe: <b>{parecido.nome}</b> {parecido.telefone && `(${parecido.telefone})`}</span>

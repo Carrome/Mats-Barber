@@ -79,7 +79,7 @@ export function Ajustes({ db, update, notify, ask, substituir, instalar, fazerBa
                   return d;
                 }, true);
                 notify("Serviço excluído", true);
-              })}><Trash2 size={18} color={emUso(s.id) ? "#C9CEC9" : "#C8372D"} /></button>
+              })}><Trash2 size={18} color={emUso(s.id) ? "#CCCCCC" : "#C8372D"} /></button>
           </div>
         ))}
         <button className="mf-btn sm alt" style={{ alignSelf: "flex-start" }} onClick={() => update((d) => { d.servicos.push({ id: uid(), nome: "Novo serviço", preco: 30 }); return d; })}><Plus size={15} />Adicionar serviço</button>
@@ -130,7 +130,7 @@ export function Ajustes({ db, update, notify, ask, substituir, instalar, fazerBa
                   <button key={d} className={"mf-chip" + (p.dias?.includes(d) ? " on" : "")} onClick={() => setPausa(p.id, { dias: p.dias?.includes(d) ? p.dias.filter((x) => x !== d) : ordenarDias([...(p.dias || []), d]) })}>{DIAS_CURTO[d]}</button>
                 ))}
               </div>
-              {invalida ? <small style={{ color: "#C8372D" }}>O horário final precisa ser depois do inicial.</small>
+              {invalida ? <small style={{ color: "var(--poste-tx)" }}>O horário final precisa ser depois do inicial.</small>
                 : <small>Bloqueia {afetados.length ? afetados.join(", ") : "nenhum horário da grade"}{p.dias?.length ? "" : " (escolha os dias)"}.</small>}
             </div>
           );
@@ -177,7 +177,7 @@ export function Ajustes({ db, update, notify, ask, substituir, instalar, fazerBa
           {cfg.ultimoBackup ? ` Último backup: ${new Date(cfg.ultimoBackup).toLocaleDateString("pt-BR")}.` : " Nenhum backup feito ainda."}
         </p>
         {persistido !== null && (
-          <small style={{ color: persistido ? "#2F7A4F" : "#7A5710" }}>
+          <small style={{ color: persistido ? "var(--ok-tx)" : "var(--latao-tx)" }}>
             <ShieldCheck size={14} style={{ verticalAlign: -2 }} /> {persistido ? "Armazenamento protegido: o navegador não apaga os dados sozinho." : "O navegador pode limpar os dados se faltar espaço. Instalar o app na tela inicial ajuda a proteger."}
           </small>
         )}

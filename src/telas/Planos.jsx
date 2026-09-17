@@ -76,7 +76,7 @@ export function Planos({ db, update, notify, ask, abrir, sub, setSub }) {
                 </div>
                 {c.descricao && <p>{c.descricao}</p>}
                 <div className="mf-row mf-wrapr" style={{ alignItems: "baseline", gap: 10 }}>
-                  <span className="mf-price" style={{ color: "#C8372D" }}>{rotuloDesconto(c)}</span>
+                  <span className="mf-price" style={{ color: "var(--poste-tx)" }}>{rotuloDesconto(c)}</span>
                   {exemplo && <small>{exemplo.nome}: {brl(exemplo.preco)} → {brl(precoCampanha(c, exemplo.preco))}</small>}
                 </div>
                 <small>{c.inicio ? `de ${ddmmaa(c.inicio)}` : "sem início definido"}{c.fim ? ` até ${ddmmaa(c.fim)}` : ", sem data para acabar"}</small>
@@ -162,7 +162,7 @@ function PlanoForm({ db, update, notify, ask, plano, onClose }) {
           <Campo label="Nome do plano"><input className="mf-input" value={f.nome} onChange={set("nome")} placeholder="Matts Flex 10" autoFocus={!plano.id} /></Campo>
           <Campo label="Código"><input className="mf-input" value={f.sigla} onChange={set("sigla")} placeholder="F10" maxLength={4} disabled={!!vendidos} /></Campo>
         </div>
-        {siglaUsada && <small style={{ color: "#C8372D" }}>Já existe um plano com esse código.</small>}
+        {siglaUsada && <small style={{ color: "var(--poste-tx)" }}>Já existe um plano com esse código.</small>}
         <Campo label="Serviço incluído">
           <select className="mf-input" value={f.servicoId} onChange={set("servicoId")}>
             {db.servicos.map((x) => <option key={x.id} value={x.id}>{x.nome} ({brl(x.preco)})</option>)}
@@ -173,7 +173,7 @@ function PlanoForm({ db, update, notify, ask, plano, onClose }) {
           <Campo label="Desconto/uso (R$)"><NumInput value={f.descontoPorUso} onChange={setN("descontoPorUso")} min={0} /></Campo>
           <Campo label="Validade (dias)"><NumInput value={f.validadeDias} onChange={setN("validadeDias")} min={1} max={730} inteiro /></Campo>
         </div>
-        {s && num.descontoPorUso >= s.preco && <small style={{ color: "#C8372D" }}>O desconto por uso precisa ser menor que o preço do serviço.</small>}
+        {s && num.descontoPorUso >= s.preco && <small style={{ color: "var(--poste-tx)" }}>O desconto por uso precisa ser menor que o preço do serviço.</small>}
         <Campo label="Descrição para o cliente"><textarea className="mf-input" rows={2} value={f.descricao} onChange={set("descricao")} /></Campo>
         <label className="mf-toggle"><input type="checkbox" checked={f.ativo} onChange={set("ativo")} />Disponível para venda</label>
         <label className="mf-toggle"><input type="checkbox" checked={!!f.somenteVagas} onChange={set("somenteVagas")} />Só pode ser usado em horários Flex (vagas ociosas)</label>
@@ -241,7 +241,7 @@ function CampanhaForm({ db, update, notify, ask, camp, onClose }) {
           <Campo label="Começa em"><input className="mf-input" type="date" value={f.inicio} onChange={set("inicio")} /></Campo>
           <Campo label="Termina em"><input className="mf-input" type="date" value={f.fim} onChange={set("fim")} /></Campo>
         </div>
-        {f.fim && f.inicio && f.fim < f.inicio && <small style={{ color: "#C8372D" }}>A data de término é antes do início.</small>}
+        {f.fim && f.inicio && f.fim < f.inicio && <small style={{ color: "var(--poste-tx)" }}>A data de término é antes do início.</small>}
         <div className="mf-panel" style={{ padding: 12 }}>
           <small>Como fica o preço:</small>
           <div className="mf-ledger">

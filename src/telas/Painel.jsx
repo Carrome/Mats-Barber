@@ -17,7 +17,7 @@ import {
 import { useAgora, Tag } from "../componentes.jsx";
 import { msgAniversario, msgRetorno } from "./Clientes.jsx";
 
-const CORES = { Pacotes: "#2A4E8A", Serviços: "#1F3A32", Campanhas: "#C8372D" };
+const CORES = { Pacotes: "var(--azul-tx)", Serviços: "var(--grafico-servicos)", Campanhas: "var(--poste-tx)" };
 
 export function Painel({ db, notify, abrir, fazerBackup }) {
   const agora = useAgora();
@@ -195,7 +195,7 @@ export function Painel({ db, notify, abrir, fazerBackup }) {
         <p style={{ opacity: 0.8 }}>{f.previsto > 0 ? `Mais ${brl(f.previsto)} em horários já marcados` : "Nenhum valor previsto em horários marcados"}</p>
         {meta > 0 && (<>
           <div className="barra"><i style={{ width: `${pct * 100}%` }} /></div>
-          <small style={{ color: "#cfe0d9" }}>{Math.round(pct * 100)}% da meta de {brl(meta)}</small>
+          <small style={{ color: "rgba(255,255,255,.78)" }}>{Math.round(pct * 100)}% da meta de {brl(meta)}</small>
           {ehAtual && falta > 0 && diasRestantes > 0 && <p className="falta">Faltam {brl(falta)} além do que já está marcado: cerca de {brl(falta / diasRestantes)} por dia de atendimento restante ({diasRestantes}).</p>}
           {ehAtual && f.total + f.previsto >= meta && <p className="falta">Com os horários marcados, a meta do mês fica batida.</p>}
         </>)}
@@ -214,7 +214,7 @@ export function Painel({ db, notify, abrir, fazerBackup }) {
         <div style={{ height: 220 }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={diario} margin={{ top: 6, right: 4, left: -12, bottom: 0 }}>
-              <CartesianGrid vertical={false} stroke="#E3E7E3" />
+              <CartesianGrid vertical={false} stroke="var(--linha)" />
               <XAxis dataKey="dia" tick={{ fontSize: 11 }} interval={2} tickLine={false} axisLine={false} />
               <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `R$${v}`} />
               <Tooltip formatter={(v) => brl(v)} labelFormatter={(l) => `Dia ${l}`} cursor={{ fill: "rgba(31,58,50,.06)" }} />
@@ -323,7 +323,7 @@ export function Painel({ db, notify, abrir, fazerBackup }) {
               {Object.entries(f.porPagamento).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
                 <div key={k}>
                   <span>{k}</span>
-                  <span className="trilho"><i style={{ width: `${(v / totalPag) * 100}%`, background: k === "Não informado" ? "#B9C0BB" : undefined }} /></span>
+                  <span className="trilho"><i style={{ width: `${(v / totalPag) * 100}%`, background: k === "Não informado" ? "#BDBDBD" : undefined }} /></span>
                   <b>{brl(v)}</b>
                 </div>
               ))}
@@ -336,7 +336,7 @@ export function Painel({ db, notify, abrir, fazerBackup }) {
           <div style={{ height: 200 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={historico} margin={{ top: 6, right: 4, left: -12, bottom: 0 }}>
-                <CartesianGrid vertical={false} stroke="#E3E7E3" />
+                <CartesianGrid vertical={false} stroke="var(--linha)" />
                 <XAxis dataKey="mes" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
                 <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
                 <Tooltip formatter={(v) => brl(v)} cursor={{ fill: "rgba(31,58,50,.06)" }} />

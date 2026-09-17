@@ -82,7 +82,7 @@ export function Vagas({ db, update, notify }) {
         </Campo>
         <div className="mf-row" style={{ gap: 14 }}>
           <span className="mf-strike">{brl(serv?.preco)}</span>
-          <span className="mf-price" style={{ color: "#C8372D" }}>{brl(precoFlex)}</span>
+          <span className="mf-price" style={{ color: "var(--poste-tx)" }}>{brl(precoFlex)}</span>
         </div>
       </section>
 
@@ -170,7 +170,7 @@ async function desenharStory(db, data, lista) {
   } catch (e) { /* segue com fonte padrão */ }
 
   // fundo
-  g.fillStyle = "#1F3A32"; g.fillRect(0, 0, W, H);
+  g.fillStyle = "#000000"; g.fillRect(0, 0, W, H);
   // faixas de poste de barbeiro
   const faixa = (y, h) => {
     g.save(); g.beginPath(); g.rect(0, y, W, h); g.clip();
@@ -191,11 +191,11 @@ async function desenharStory(db, data, lista) {
     g.fillStyle = cor; g.textAlign = "center"; g.fillText(txt, W / 2, y);
   };
   const camps = [...new Set(lista.map((a) => campanhaDe(db, a.campanhaId)?.nome).filter(Boolean))];
-  centro((db.config.nome || "").toUpperCase(), 190, `600 44px ${TEXTO}`, "#CFE0D9");
+  centro((db.config.nome || "").toUpperCase(), 190, `600 44px ${TEXTO}`, "#F3E8CD");
   centro((camps[0] || "HORÁRIO COM DESCONTO").toUpperCase(), 330, `800 150px ${DISPLAY}`, "#FFFFFF");
   const hoje = hojeYmd();
   const quando = data === hoje ? "HOJE" : data === ymd(addDays(new Date(), 1)) ? "AMANHÃ" : DIAS_LONGO[parse(data).getDay()].toUpperCase();
-  centro(`${quando} · ${ddmm(data)}`, 440, `700 84px ${DISPLAY}`, "#F3E8CD");
+  centro(`${quando} · ${ddmm(data)}`, 440, `700 84px ${DISPLAY}`, "#FFF406");
 
   const itens = lista.slice(0, 8);
   const alt = itens.length > 6 ? 125 : itens.length > 4 ? 150 : 190, gap = 26;
@@ -209,23 +209,23 @@ async function desenharStory(db, data, lista) {
     g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + alt, r); g.arcTo(x + w, y + alt, x, y + alt, r); g.arcTo(x, y + alt, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); g.fill();
     g.textAlign = "left"; g.fillStyle = "#C8372D"; g.font = `800 ${alt * 0.56}px ${DISPLAY}`;
     g.fillText(a.hora, x + 40, y + alt * 0.68);
-    g.fillStyle = "#18201D"; g.font = `600 ${alt * 0.24}px ${TEXTO}`;
+    g.fillStyle = "#1C1C1C"; g.font = `600 ${alt * 0.24}px ${TEXTO}`;
     g.fillText(s?.nome || "", x + alt * 1.75, y + alt * 0.6);
     g.textAlign = "right";
     if (s && s.preco > a.valor) {
-      g.fillStyle = "#66706B"; g.font = `500 ${alt * 0.22}px ${TEXTO}`;
+      g.fillStyle = "#6B6B6B"; g.font = `500 ${alt * 0.22}px ${TEXTO}`;
       const antigo = brl(s.preco);
       g.fillText(antigo, x + w - 40, y + alt * 0.34);
       const tw = g.measureText(antigo).width;
       g.fillRect(x + w - 40 - tw, y + alt * 0.34 - alt * 0.075, tw, 4);
     }
-    g.fillStyle = "#1F3A32"; g.font = `800 ${alt * 0.4}px ${DISPLAY}`;
+    g.fillStyle = "#141414"; g.font = `800 ${alt * 0.4}px ${DISPLAY}`;
     g.fillText(brl(a.valor), x + w - 40, y + alt * 0.8);
   });
-  if (lista.length > itens.length) centro(`+ ${lista.length - itens.length} horário(s)`, topo + itens.length * (alt + gap) + 40, `600 40px ${TEXTO}`, "#CFE0D9");
+  if (lista.length > itens.length) centro(`+ ${lista.length - itens.length} horário(s)`, topo + itens.length * (alt + gap) + 40, `600 40px ${TEXTO}`, "#F3E8CD");
 
   centro("CHAMA NO WHATSAPP", H - 250, `800 96px ${DISPLAY}`, "#FFFFFF");
-  centro("e garanta o seu antes que acabe", H - 180, `500 44px ${TEXTO}`, "#CFE0D9");
+  centro("e garanta o seu antes que acabe", H - 180, `500 44px ${TEXTO}`, "#F3E8CD");
 
   return new Promise((ok) => cv.toBlob((b) => ok(b), "image/png"));
 }
