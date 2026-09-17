@@ -1,72 +1,44 @@
 /* =====================================================================
-   Painel: hoje, amanhã, faturamento, retorno de clientes e relatórios
+   Painel: hoje, amanhã, faturamento, vendas por serviço, Comum × Flex e formas de pagamento
    ===================================================================== */
 import React, { useMemo, useState } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import {
-  AlertTriangle, Cake, ChevronLeft, ChevronRight, Clock, Download, FileSpreadsheet, MessageCircle, ShieldCheck, Wallet,
+  Clock, Download, FileSpreadsheet, MessageCircle, ShieldCheck, Wallet,
 } from "lucide-react";
 import {
-  addDays, brl, cap, dataLonga, ddmm, ddmmaa, diasAteAniversario, entregarArquivo, gerarCsv, hojeYmd, inicioMes, MESES,
-  momento, nomeMes, pad, parse, plural, primeiroNome, soma, whats, ymd, fimMesYmd, diffDias,
+  addDays, brl, dataLonga, ddmm, ddmmaa, entregarArquivo, gerarCsv, hojeYmd,
+  momento, nomeMes, parse, plural, primeiroNome, whats, ymd, diffDias,
 } from "../util.js";
 import {
-  atendeNoDia, capacidadeMes, clienteDe, diaFechado, faturamentoMes, infoPacote, infoRetorno, pendentes, recebidoNoDia,
-  servicoDe, TIPOS_ATENDIMENTO, vagasLivres, campanhaDe,
+  atendeNoDia, clienteDe, comumFlex, diaFechado, fatiasRosca, infoPacote, intervaloPeriodo,
+  pendentes, PERIODOS, recebidoNoDia, resumoPeriodo, servicoDe, TIPOS_ATENDIMENTO, vendasPorServico,
 } from "../regras.js";
-import { useAgora, Tag } from "../componentes.jsx";
-import { msgAniversario, msgRetorno } from "./Clientes.jsx";
+import { useAgora, Seg } from "../componentes.jsx";
+import { Rosca } from "./Rosca.jsx";
 
-const CORES = { Pacotes: "var(--azul-tx)", Serviços: "var(--grafico-servicos)", Campanhas: "var(--poste-tx)" };
+const TITULO_FATURAMENTO = { hoje: "Faturamento de hoje", semana: "Faturamento da semana", mes: "Faturamento do mês até agora", mesAnterior: "Faturamento do mês" };
+const corComumFlex = (id) => (id === "flex" ? "var(--serie-flex)" : "var(--serie-comum)");
+const atendimentos = (fatia) => `${fatia.qtd} atend.`;
 
 export function Painel({ db, notify, abrir, fazerBackup }) {
   const agora = useAgora();
-  const [ref, setRef] = useState(inicioMes(new Date()));
+  const [periodo, setPeriodo] = useState("hoje");
   const cfg = db.config;
-  const key = ymd(ref).slice(0, 7);
-  const f = useMemo(() => faturamentoMes(db, key), [db, key]);
   const hoje = hojeYmd();
-  const ehAtual = key === hoje.slice(0, 7);
-  const ultimo = fimMesYmd(ref);
+  const P = useMemo(() => intervaloPeriodo(periodo, parse(hoje)), [periodo, hoje]);
+  const f = useMemo(() => resumoPeriodo(db, P.inicio, P.fim), [db, P]);
+  const mensal = periodo === "mes" || periodo === "mesAnterior";
+  const ehAtual = periodo === "mes";
+  const ref = parse(P.inicio);
+  const key = P.inicio.slice(0, 7);
+  const ultimo = P.fim;
+  const vendas = useMemo(() => vendasPorServico(db, P.inicio, P.fim), [db, P]);
+  const cf = useMemo(() => comumFlex(db, P.inicio, P.fim), [db, P]);
+  const itensCF = [{ id: "comum", nome: "Comum", ...cf.comum }, { id: "flex", nome: "Flex", ...cf.flex }];
+  // cor fixa por serviço (ordem do cadastro), igual em qualquer período
+  const corServico = (id) => { const i = db.servicos.findIndex((s) => s.id === id); return i >= 0 && i < 8 ? `var(--serie-${i + 1})` : "var(--serie-outros)"; };
 
-  const diario = useMemo(() => {
-    const n = new Date(ref.getFullYear(), ref.getMonth() + 1, 0).getDate();
-    return Array.from({ length: n }, (_, i) => {
-      const data = `${key}-${pad(i + 1)}`;
-      const feitos = db.agendamentos.filter((a) => a.data === data && a.status === "concluido");
-      return {
-        dia: String(i + 1),
-        Pacotes: soma(db.pacotes.filter((p) => !p.cancelado && p.dataCompra === data), (p) => p.valorPago),
-        Serviços: soma(feitos.filter((a) => a.tipo === "avulso"), (a) => a.valor),
-        Campanhas: soma(feitos.filter((a) => a.tipo === "campanha"), (a) => a.valor),
-      };
-    });
-  }, [db, key, ref]);
-
-  const historico = useMemo(() => Array.from({ length: 6 }, (_, i) => {
-    const d = new Date(ref.getFullYear(), ref.getMonth() - 5 + i, 1);
-    const r = faturamentoMes(db, ymd(d).slice(0, 7));
-    return { mes: MESES[d.getMonth()].slice(0, 3), Pacotes: r.pacotes, Serviços: r.servicos, Campanhas: r.campanhas };
-  }), [db, ref]);
-
-  const ags = db.agendamentos.filter((a) => a.data.startsWith(key));
-  const capacidade = capacidadeMes(db, key);
-  const ocupados = ags.filter((a) => TIPOS_ATENDIMENTO.includes(a.tipo)).length;
-  const ocupacao = capacidade ? Math.min(1, ocupados / capacidade) : 0;
-  const livres = ehAtual ? vagasLivres(db, hoje, ultimo, agora).length : null;
-
-  const ofertas = ags.filter((a) => a.tipo === "oferta");
-  const ofAbertas = ofertas.filter((a) => momento(a.data, a.hora) > agora).length;
-  const ofPerdidas = ofertas.length - ofAbertas;
-  const ofVendidas = ags.filter((a) => a.deOferta || (a.tipo === "campanha" && campanhaDe(db, a.campanhaId)?.tipo === "vaga")).length;
-  const taxa = ofVendidas + ofPerdidas ? ofVendidas / (ofVendidas + ofPerdidas) : 0;
-
-  const infos = db.pacotes.map((p) => ({ p, i: infoPacote(db, p) }));
-  const ativos = infos.filter((x) => x.i.status === "Ativo" || x.i.status === "Vence em breve");
-  const aAtender = soma(ativos, (x) => x.p.qtd - x.i.usados);
-  const atencao = infos.filter((x) => (x.i.status === "Vence em breve" || x.i.status === "Vencido") && x.i.saldo > 0 && x.i.dias > -30)
-    .sort((a, b) => a.i.dias - b.i.dias).slice(0, 6);
-
+  const ags = db.agendamentos.filter((a) => a.data >= P.inicio && a.data <= P.fim);
   const meta = Number(cfg.meta) || 0;
   const pct = meta ? Math.min(1, f.total / meta) : 0;
   let diasRestantes = 0;
@@ -82,10 +54,6 @@ export function Painel({ db, notify, abrir, fazerBackup }) {
   let amanha = null;
   for (let i = 1; i <= 7; i++) { const d = ymd(addDays(new Date(), i)); if (atendeNoDia(db, d) && !diaFechado(db, d)) { amanha = d; break; } }
   const deAmanha = amanha ? agsDia(amanha).filter((a) => a.status === "agendado") : [];
-
-  const retornos = useMemo(() => db.clientes.map((c) => ({ c, r: infoRetorno(db, c, hoje) })), [db, hoje]);
-  const paraChamar = retornos.filter((x) => x.r.situacao === "Chamar").sort((a, b) => b.r.atraso - a.r.atraso);
-  const aniversarios = db.clientes.map((c) => ({ c, d: diasAteAniversario(c.aniversario, hoje) })).filter((x) => x.d !== null && x.d <= 7).sort((a, b) => a.d - b.d);
 
   const backupDias = cfg.ultimoBackup ? diffDias(hoje, cfg.ultimoBackup.slice(0, 10)) : null;
   const pedirBackup = !db.demo && db.clientes.length >= 3 && (backupDias === null || backupDias >= 7);
@@ -133,8 +101,7 @@ export function Painel({ db, notify, abrir, fazerBackup }) {
         </div>
       )}
 
-      {ehAtual && (
-        <div className="mf-grid mf-g2">
+      <div className="mf-grid mf-g2">
           <section className="mf-panel mf-stack" style={{ gap: 10 }}>
             <div className="mf-row mf-between">
               <h3>Hoje, {ddmm(hoje)}</h3>
@@ -178,22 +145,20 @@ export function Painel({ db, notify, abrir, fazerBackup }) {
             )}
           </section>
         </div>
-      )}
 
-      <div className="mf-row mf-between">
-        <button className="mf-iconbtn" onClick={() => setRef(new Date(ref.getFullYear(), ref.getMonth() - 1, 1))} aria-label="Mês anterior"><ChevronLeft /></button>
-        <div style={{ textAlign: "center" }}>
-          <h2>{cap(nomeMes(ref))}</h2>
-          <button className="mf-link" style={{ fontSize: 13 }} onClick={exportarCsv}><FileSpreadsheet size={14} style={{ verticalAlign: -2 }} /> Exportar planilha do mês</button>
+      <div className="mf-periodo">
+        <div>
+          <h2>{P.rotulo}</h2>
+          {mensal && <button className="mf-link" style={{ fontSize: 13, paddingLeft: 0 }} onClick={exportarCsv}><FileSpreadsheet size={14} style={{ verticalAlign: -2 }} /> Exportar planilha do mês</button>}
         </div>
-        <button className="mf-iconbtn" onClick={() => setRef(new Date(ref.getFullYear(), ref.getMonth() + 1, 1))} aria-label="Próximo mês"><ChevronRight /></button>
+        <Seg valor={periodo} onChange={setPeriodo} opcoes={PERIODOS} />
       </div>
 
       <section className="mf-hero">
-        <p style={{ opacity: 0.8 }}>{ehAtual ? "Faturamento do mês até agora" : "Faturamento do mês"}</p>
+        <p style={{ opacity: 0.8 }}>{TITULO_FATURAMENTO[periodo]}</p>
         <div className="valor">{brl(f.total)}</div>
         <p style={{ opacity: 0.8 }}>{f.previsto > 0 ? `Mais ${brl(f.previsto)} em horários já marcados` : "Nenhum valor previsto em horários marcados"}</p>
-        {meta > 0 && (<>
+        {meta > 0 && mensal && (<>
           <div className="barra"><i style={{ width: `${pct * 100}%` }} /></div>
           <small style={{ color: "rgba(255,255,255,.78)" }}>{Math.round(pct * 100)}% da meta de {brl(meta)}</small>
           {ehAtual && falta > 0 && diasRestantes > 0 && <p className="falta">Faltam {brl(falta)} além do que já está marcado: cerca de {brl(falta / diasRestantes)} por dia de atendimento restante ({diasRestantes}).</p>}
@@ -206,146 +171,35 @@ export function Painel({ db, notify, abrir, fazerBackup }) {
         </div>
       </section>
 
+      <div className="mf-grid mf-g2">
+        <section className="mf-panel">
+          <h3>Vendas por serviço</h3>
+          {vendas.length === 0 ? <p className="sub">Nenhum atendimento concluído neste período.</p> : (
+            <Rosca lado titulo="Em R$" fatias={fatiasRosca(vendas, "valor")} cor={corServico} formatar={brl} detalhe={atendimentos} />
+          )}
+        </section>
+        <section className="mf-panel">
+          <h3>Comum × Flex</h3>
+          {vendas.length === 0 ? <p className="sub">Nenhum atendimento concluído neste período.</p> : (
+            <Rosca lado titulo="Em R$" fatias={fatiasRosca(itensCF, "valor")} cor={corComumFlex} formatar={brl} detalhe={atendimentos} />
+          )}
+        </section>
+      </div>
       <section className="mf-panel">
-        <div className="mf-row mf-between mf-wrapr" style={{ marginBottom: 8 }}>
-          <h3>Faturamento por dia</h3>
-          <div className="mf-legenda">{Object.entries(CORES).map(([k, c]) => <span key={k}><i style={{ background: c, border: 0 }} />{k}</span>)}</div>
-        </div>
-        <div style={{ height: 220 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={diario} margin={{ top: 6, right: 4, left: -12, bottom: 0 }}>
-              <CartesianGrid vertical={false} stroke="var(--linha)" />
-              <XAxis dataKey="dia" tick={{ fontSize: 11 }} interval={2} tickLine={false} axisLine={false} />
-              <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `R$${v}`} />
-              <Tooltip formatter={(v) => brl(v)} labelFormatter={(l) => `Dia ${l}`} cursor={{ fill: "rgba(31,58,50,.06)" }} />
-              {Object.entries(CORES).map(([k, c]) => <Bar key={k} dataKey={k} stackId="a" fill={c} />)}
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <h3 style={{ marginBottom: 10 }}><Wallet size={17} style={{ verticalAlign: -2 }} /> Recebido por forma de pagamento</h3>
+        {totalPag === 0 ? <p className="sub">Nada recebido neste período.</p> : (
+          <div className="mf-pay">
+            {Object.entries(f.porPagamento).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
+              <div key={k}>
+                <span>{k}</span>
+                <span className="trilho"><i style={{ width: `${(v / totalPag) * 100}%`, background: k === "Não informado" ? "#BDBDBD" : undefined }} /></span>
+                <b>{brl(v)}</b>
+              </div>
+            ))}
+          </div>
+        )}
+        {f.porPagamento["Não informado"] > 0 && <small style={{ display: "block", marginTop: 8 }}>“Não informado” são atendimentos concluídos sem a forma de pagamento marcada.</small>}
       </section>
-
-      <div className="mf-grid mf-g3">
-        <section className="mf-panel">
-          <h3>Atendimentos</h3>
-          <div className="mf-ledger">
-            <div><span>Concluídos</span><b>{f.atendimentos}</b></div>
-            <div><span>Faltas</span><b style={{ color: f.faltas ? "#C8372D" : undefined }}>{f.faltas}</b></div>
-            <div><span>Ticket médio</span><b>{brl(f.ticket)}</b></div>
-            <div><span>Ocupação da agenda</span><b>{Math.round(ocupacao * 100)}%</b></div>
-            {livres !== null && (
-              <div><button className="mf-link" onClick={() => abrir.aba("vagas")}>Vagas livres até o fim do mês</button><b>{livres}</b></div>
-            )}
-          </div>
-        </section>
-        <section className="mf-panel">
-          <h3>Vagas com desconto</h3>
-          <div className="mf-ledger">
-            <div><span>Vendidas</span><b>{ofVendidas}</b></div>
-            <div><span>Em oferta agora</span><b>{ofAbertas}</b></div>
-            <div><span>Não vendidas</span><b>{ofPerdidas}</b></div>
-            <div><span>Taxa de venda</span><b>{Math.round(taxa * 100)}%</b></div>
-          </div>
-        </section>
-        <section className="mf-panel">
-          <h3>Pacotes</h3>
-          <div className="mf-ledger">
-            <div><span>Vendidos no mês</span><b>{f.qtdPacotes}</b></div>
-            <div><span>Ativos</span><b>{ativos.length}</b></div>
-            <div><span>Cortes ainda a atender</span><b>{aAtender}</b></div>
-            <div><button className="mf-link" onClick={() => abrir.aba("planos", "vendas")}>Ver pacotes vendidos</button><b /></div>
-          </div>
-        </section>
-      </div>
-
-      <div className="mf-grid mf-g2">
-        <section className="mf-panel">
-          <div className="mf-row mf-between" style={{ marginBottom: 6 }}>
-            <h3>Clientes para chamar</h3>
-            <button className="mf-link" onClick={() => abrir.aba("clientes")}>Ver clientes</button>
-          </div>
-          {paraChamar.length === 0 ? <p className="sub">Ninguém atrasado. Todo mundo em dia ou já marcado.</p> : (
-            <div className="mf-list">
-              {paraChamar.slice(0, 5).map(({ c, r }) => (
-                <div key={c.id} className="mf-item">
-                  <button className="mf-grow" style={{ background: "none", border: 0, textAlign: "left", padding: 0, minWidth: 0 }} onClick={() => abrir.cliente(c.id)}>
-                    <b className="mf-ellip" style={{ display: "block" }}>{c.nome}</b>
-                    <small>{r.semVisita} dias sem vir{r.perfil ? `, costuma vir ${r.perfil}` : ""}</small>
-                  </button>
-                  {c.telefone && <a className="mf-btn sm alt" href={whats(c.telefone, msgRetorno(db, c, r), cfg.ddd)} target="_blank" rel="noreferrer"><MessageCircle size={15} />Chamar</a>}
-                </div>
-              ))}
-              {paraChamar.length > 5 && <small style={{ paddingTop: 8 }}>e mais {paraChamar.length - 5} na tela Clientes.</small>}
-            </div>
-          )}
-          {aniversarios.length > 0 && (<>
-            <div className="mf-sep" />
-            <h3 style={{ marginBottom: 4 }}><Cake size={17} style={{ verticalAlign: -2 }} /> Aniversários da semana</h3>
-            <div className="mf-list">
-              {aniversarios.map(({ c, d }) => (
-                <div key={c.id} className="mf-item">
-                  <button className="mf-grow" style={{ background: "none", border: 0, textAlign: "left", padding: 0 }} onClick={() => abrir.cliente(c.id)}>
-                    <b>{c.nome}</b><br /><small>{d === 0 ? "hoje!" : d === 1 ? "amanhã" : `em ${d} dias`} ({c.aniversario})</small>
-                  </button>
-                  {c.telefone && <a className="mf-btn sm alt" href={whats(c.telefone, msgAniversario(db, c), cfg.ddd)} target="_blank" rel="noreferrer"><MessageCircle size={15} />Parabéns</a>}
-                </div>
-              ))}
-            </div>
-          </>)}
-        </section>
-        <section className="mf-panel">
-          <h3 style={{ marginBottom: 6 }}>Pacotes que precisam de atenção</h3>
-          {atencao.length === 0 ? <p className="sub">Nenhum pacote vencendo com cortes sobrando.</p> : (
-            <div className="mf-list">
-              {atencao.map(({ p, i }) => {
-                const c = clienteDe(db, p.clienteId);
-                const msg = `Olá, ${primeiroNome(c?.nome)}! Seu pacote ${p.planoNome} (${p.codigo}) ainda tem ${i.saldo} corte(s) e ${i.dias >= 0 ? `vence em ${ddmmaa(i.vence)}` : `venceu em ${ddmmaa(i.vence)}`}. Quer marcar seu horário?`;
-                return (
-                  <div key={p.id} className="mf-item">
-                    <AlertTriangle size={18} color={i.dias < 0 ? "#C8372D" : "#B8892B"} />
-                    <button className="mf-grow" style={{ background: "none", border: 0, textAlign: "left", padding: 0 }} onClick={() => abrir.pacote(p.id)}>
-                      <b className="mf-ellip" style={{ display: "block" }}>{c?.nome}</b>
-                      <small>{p.codigo}, {i.saldo} corte(s), {i.dias >= 0 ? `vence em ${i.dias} dia(s)` : "vencido"}</small>
-                    </button>
-                    {c?.telefone && <a className="mf-btn sm alt" href={whats(c.telefone, msg, cfg.ddd)} target="_blank" rel="noreferrer"><MessageCircle size={15} />Avisar</a>}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-      </div>
-
-      <div className="mf-grid mf-g2">
-        <section className="mf-panel">
-          <h3 style={{ marginBottom: 10 }}><Wallet size={17} style={{ verticalAlign: -2 }} /> Recebido por forma de pagamento</h3>
-          {totalPag === 0 ? <p className="sub">Nada recebido neste mês ainda.</p> : (
-            <div className="mf-pay">
-              {Object.entries(f.porPagamento).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
-                <div key={k}>
-                  <span>{k}</span>
-                  <span className="trilho"><i style={{ width: `${(v / totalPag) * 100}%`, background: k === "Não informado" ? "#BDBDBD" : undefined }} /></span>
-                  <b>{brl(v)}</b>
-                </div>
-              ))}
-            </div>
-          )}
-          {f.porPagamento["Não informado"] > 0 && <small style={{ display: "block", marginTop: 8 }}>“Não informado” são atendimentos concluídos sem a forma de pagamento marcada.</small>}
-        </section>
-        <section className="mf-panel">
-          <h3 style={{ marginBottom: 8 }}>Últimos 6 meses</h3>
-          <div style={{ height: 200 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={historico} margin={{ top: 6, right: 4, left: -12, bottom: 0 }}>
-                <CartesianGrid vertical={false} stroke="var(--linha)" />
-                <XAxis dataKey="mes" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                <Tooltip formatter={(v) => brl(v)} cursor={{ fill: "rgba(31,58,50,.06)" }} />
-                {Object.entries(CORES).map(([k, c]) => <Bar key={k} dataKey={k} stackId="a" fill={c} />)}
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-      </div>
     </div>
   );
 }

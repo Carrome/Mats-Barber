@@ -4,7 +4,7 @@
 export const DIAS_CURTO = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 export const DIAS_LONGO = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 export const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
-export const PAGAMENTOS = ["Pix", "Dinheiro", "Cartão de débito", "Cartão de crédito"];
+export const PAGAMENTOS = ["Pix", "Dinheiro"];
 
 export const pad = (n, l = 2) => String(n).padStart(l, "0");
 export const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;

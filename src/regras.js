@@ -2,7 +2,7 @@
    Regras de negócio
    ===================================================================== */
 import {
-  addDays, diffDias, fromMin, hojeYmd, mesKey, momento, parse, r2, soma, toMin, ymd, PAGAMENTOS,
+  addDays, cap, ddmm, diffDias, fimMesYmd, fromMin, hojeYmd, inicioMes, momento, nomeMes, parse, r2, segundaDe, soma, toMin, ymd, PAGAMENTOS,
 } from "./util.js";
 
 export const TIPOS_ATENDIMENTO = ["avulso", "pacote", "campanha"];
@@ -114,11 +114,17 @@ export function horasLivresNoDia(db, data, ignorarId, agora = new Date()) {
   return horariosDe(db.config).filter((h) => !ocup.has(h) && !pausaEm(db.config, data, h) && momento(data, h) > agora);
 }
 
+// Limites de um mês "AAAA-MM"
+const limitesMes = (key) => { const [y, m] = key.split("-").map(Number); const d = new Date(y, m - 1, 1); return [ymd(d), fimMesYmd(d)]; };
+
 export function capacidadeMes(db, key) {
-  const [y, m] = key.split("-").map(Number);
+  return capacidadePeriodo(db, ...limitesMes(key));
+}
+
+export function capacidadePeriodo(db, inicio, fim) {
   const horas = horariosDe(db.config);
   let total = 0;
-  for (let d = new Date(y, m - 1, 1); d.getMonth() === m - 1; d = addDays(d, 1)) {
+  for (let d = parse(inicio); ymd(d) <= fim; d = addDays(d, 1)) {
     const data = ymd(d);
     if (!atendeNoDia(db, data) || diaFechado(db, data)) continue;
     total += horas.filter((h) => !pausaEm(db.config, data, h)).length;
@@ -126,10 +132,72 @@ export function capacidadeMes(db, key) {
   return total;
 }
 
+/* ---------- períodos do painel ---------- */
+export const PERIODOS = [["hoje", "Hoje"], ["semana", "Essa semana"], ["mes", "Esse mês"], ["mesAnterior", "Mês anterior"]];
+
+export function intervaloPeriodo(periodo, agora = new Date()) {
+  const hoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
+  if (periodo === "semana") {
+    const seg = segundaDe(hoje), dom = addDays(seg, 6);
+    return { inicio: ymd(seg), fim: ymd(dom), rotulo: `Semana de ${ddmm(ymd(seg))} a ${ddmm(ymd(dom))}` };
+  }
+  if (periodo === "mes" || periodo === "mesAnterior") {
+    const ref = periodo === "mes" ? inicioMes(hoje) : new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+    return { inicio: ymd(ref), fim: fimMesYmd(ref), rotulo: cap(nomeMes(ref)) };
+  }
+  return { inicio: ymd(hoje), fim: ymd(hoje), rotulo: `Hoje, ${ddmm(ymd(hoje))}` };
+}
+
+const noPeriodo = (data, inicio, fim) => data >= inicio && data <= fim;
+
+// Vaga Flex vendida: pela oferta (deOferta) ou campanha de horário vago
+export const ehFlex = (db, a) => !!a.deOferta || (a.tipo === "campanha" && campanhaDe(db, a.campanhaId)?.tipo === "vaga");
+
+// Valor de um atendimento concluído; uso de pacote vale o que o cliente pagou por corte
+export function valorAtendimento(db, a) {
+  if (a.tipo !== "pacote") return Number(a.valor) || 0;
+  const p = pacoteDe(db, a.pacoteId);
+  return p && Number(p.qtd) ? r2(p.valorPago / p.qtd) : 0;
+}
+
+const concluidosNoPeriodo = (db, inicio, fim) =>
+  db.agendamentos.filter((a) => a.status === "concluido" && TIPOS_ATENDIMENTO.includes(a.tipo) && noPeriodo(a.data, inicio, fim));
+
+export function vendasPorServico(db, inicio, fim) {
+  const grupos = new Map();
+  for (const a of concluidosNoPeriodo(db, inicio, fim)) {
+    const g = grupos.get(a.servicoId) || { id: a.servicoId, nome: servicoDe(db, a.servicoId)?.nome || "Serviço removido", valor: 0, qtd: 0 };
+    g.valor = r2(g.valor + valorAtendimento(db, a)); g.qtd++;
+    grupos.set(a.servicoId, g);
+  }
+  return [...grupos.values()].sort((a, b) => b.valor - a.valor || b.qtd - a.qtd);
+}
+
+// Fatias de uma rosca pela medida ("valor" ou "qtd"): no máximo 6, as menores viram "Outros"
+export function fatiasRosca(itens, medida, max = 6) {
+  const fatias = itens.map((x) => ({ id: x.id, nome: x.nome, v: Number(x[medida]) || 0, qtd: Number(x.qtd) || 0 })).filter((x) => x.v > 0).sort((a, b) => b.v - a.v);
+  if (fatias.length <= max) return fatias;
+  const resto = fatias.slice(max - 1);
+  return [...fatias.slice(0, max - 1), { id: "outros", nome: "Outros", v: r2(soma(resto, (x) => x.v)), qtd: soma(resto, (x) => x.qtd) }];
+}
+
+export function comumFlex(db, inicio, fim) {
+  const out = { comum: { valor: 0, qtd: 0 }, flex: { valor: 0, qtd: 0 } };
+  for (const a of concluidosNoPeriodo(db, inicio, fim)) {
+    const g = ehFlex(db, a) ? out.flex : out.comum;
+    g.valor = r2(g.valor + valorAtendimento(db, a)); g.qtd++;
+  }
+  return out;
+}
+
 /* ---------- faturamento ---------- */
 export function faturamentoMes(db, key) {
-  const pac = db.pacotes.filter((p) => !p.cancelado && mesKey(p.dataCompra) === key);
-  const ags = db.agendamentos.filter((a) => mesKey(a.data) === key);
+  return resumoPeriodo(db, ...limitesMes(key));
+}
+
+export function resumoPeriodo(db, inicio, fim) {
+  const pac = db.pacotes.filter((p) => !p.cancelado && noPeriodo(p.dataCompra, inicio, fim));
+  const ags = db.agendamentos.filter((a) => noPeriodo(a.data, inicio, fim));
   const feitos = ags.filter((a) => a.status === "concluido");
   const pacotes = soma(pac, (p) => p.valorPago);
   const servicos = soma(feitos.filter((a) => a.tipo === "avulso"), (a) => a.valor);

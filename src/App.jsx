@@ -13,7 +13,7 @@ import { CalendarDays, LayoutDashboard, RefreshCw, Settings, Sparkles, Ticket, U
 import { CSS } from "./estilos.js";
 import { entregarArquivo, hojeYmd } from "./util.js";
 import { pendentes } from "./regras.js";
-import { baseVazia, carregar, criarDemo, guardarCopiaAnterior, migrar, salvar, STORE_KEY } from "./dados.js";
+import { abrirDados, baseVazia, carregar, criarDemo, guardarCopiaAnterior, migrar, salvar, STORE_KEY } from "./dados.js";
 import { Sheet } from "./componentes.jsx";
 import { Painel } from "./telas/Painel.jsx";
 import { Agenda, PendenciasSheet, SlotSheet } from "./telas/Agenda.jsx";
@@ -59,7 +59,7 @@ export default function App() {
   /* ---------- carregar, instalar, proteger dados ---------- */
   useEffect(() => {
     let vivo = true;
-    carregar().then((d) => { if (vivo) setDb(d ? migrar(d) : criarDemo()); });
+    carregar().then((d) => { if (vivo) setDb(abrirDados(d)); });
     const h = (e) => { e.preventDefault(); setInstalarEvt(e); };
     const instalado = () => setInstalarEvt(null);
     const versao = () => setNovaVersao(true);

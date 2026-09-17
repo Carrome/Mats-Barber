@@ -6,7 +6,17 @@ import { horariosDe, pausaEm, precoCampanha, precoPlano } from "./regras.js";
 
 export const STORE_KEY = "matts-flex-app-v1";
 const KEY_ANTERIOR = STORE_KEY + "-anterior";
-export const VERSAO = 2;
+export const VERSAO = 3;
+
+// Tabela de serviços da barbearia (id "corte" mantido: os planos Matts Flex apontam para ele)
+export const SERVICOS_PADRAO = [
+  { id: "corte", nome: "Cabelo", preco: 45 },
+  { id: "cabelo-feminino", nome: "Cabelo feminino", preco: 50 },
+  { id: "barba", nome: "Barba", preco: 25 },
+  { id: "sobrancelha", nome: "Sobrancelha", preco: 5 },
+  { id: "pezinho", nome: "Pezinho", preco: 5 },
+  { id: "alisamento", nome: "Alisamento", preco: 60 },
+];
 
 const temWindowStorage = () => typeof window !== "undefined" && window.storage && window.storage.get && window.storage.set;
 
@@ -60,11 +70,7 @@ export function baseVazia() {
       alertaDias: 7, meta: 6000, ddd: "", pagamentoPadrao: "Pix", retornoPadrao: 30, toleranciaRetorno: 5,
       pausas: [], ultimoBackup: "", tema: "auto",
     },
-    servicos: [
-      { id: "corte", nome: "Corte", preco: 45 },
-      { id: "barba", nome: "Barba", preco: 25 },
-      { id: "combo", nome: "Corte + barba", preco: 70 },
-    ],
+    servicos: SERVICOS_PADRAO.map((s) => ({ ...s })),
     planos: [
       { id: "flex3", nome: "Matts Flex 3", sigla: "F3", servicoId: "corte", qtd: 3, descontoPorUso: 10, validadeDias: 45, ativo: true, somenteVagas: true, descricao: "3 cortes pagos adiantado, com R$ 10 de desconto em cada. Usados em horários Flex." },
       { id: "flex5", nome: "Matts Flex 5", sigla: "F5", servicoId: "corte", qtd: 5, descontoPorUso: 10, validadeDias: 45, ativo: true, somenteVagas: true, descricao: "5 cortes pagos adiantado, com R$ 10 de desconto em cada. Usados em horários Flex." },
@@ -82,18 +88,34 @@ export function baseVazia() {
 export function migrar(d) {
   const b = baseVazia();
   const src = d && typeof d === "object" ? d : {};
+  const versaoAntiga = Number(src.versao) || 0;
   const out = { ...b, ...src, versao: VERSAO, config: { ...b.config, ...(src.config || {}) } };
   ["servicos", "planos", "campanhas"].forEach((k) => { if (!Array.isArray(out[k])) out[k] = b[k]; });
   ["clientes", "pacotes", "agendamentos", "fechados"].forEach((k) => { if (!Array.isArray(out[k])) out[k] = []; });
+  // versão 3: tabela de serviços da barbearia (acrescenta o que falta, sem apagar nem mudar preço)
+  if (versaoAntiga < 3) {
+    out.servicos = out.servicos.map((s) => (s.id === "corte" && s.nome === "Corte" ? { ...s, nome: "Cabelo" } : s));
+    SERVICOS_PADRAO.forEach((p) => { if (!out.servicos.some((s) => s.id === p.id)) out.servicos.push({ ...p }); });
+  }
   const cfg = out.config;
   if (!Array.isArray(cfg.dias) || !cfg.dias.length) cfg.dias = b.config.dias;
   if (!Array.isArray(cfg.pausas)) cfg.pausas = [];
   out.campanhas = out.campanhas.map((c) => ({ servicoIds: [], descontoTipo: "pct", descontoValor: 0, descontoPct: 0, descricao: "", ...c }));
   out.planos = out.planos.map((p) => ({ somenteVagas: false, descricao: "", ...p }));
   out.clientes = out.clientes.map((c) => ({ telefone: "", obs: "", aniversario: "", indicadoPor: "", ...c }));
-  out.pacotes = out.pacotes.map((p) => ({ extraDias: 0, ...p }));
-  out.agendamentos = out.agendamentos.map((a) => ({ pagamento: "", obs: "", ...a, valor: r2(a.valor) }));
+  // a barbearia só aceita Pix e Dinheiro: registros antigos de cartão viram Dinheiro
+  const semCartao = (p) => (/^cart[aã]o/i.test(p || "") ? "Dinheiro" : p);
+  cfg.pagamentoPadrao = semCartao(cfg.pagamentoPadrao);
+  out.pacotes = out.pacotes.map((p) => ({ extraDias: 0, ...p, pagamento: semCartao(p.pagamento) }));
+  out.agendamentos = out.agendamentos.map((a) => ({ pagamento: "", obs: "", ...a, valor: r2(a.valor), pagamento: semCartao(a.pagamento) || "" }));
   return out;
+}
+
+// Dados ao abrir o app: exemplo antigo é gerado de novo; dados reais só migram
+export function abrirDados(d) {
+  if (!d) return criarDemo();
+  if (d.demo && (Number(d.versao) || 0) < VERSAO) return criarDemo();
+  return migrar(d);
 }
 
 export function montarPacote(db, { clienteId, planoId, dataCompra, pagamento }) {
@@ -167,7 +189,7 @@ export function criarDemo() {
   db.clientes.forEach((c, i) => {
     const iv = intervaloDe(i);
     let d = addDays(inicio, Math.floor(rnd() * iv));
-    const servPref = i % 6 === 0 ? "combo" : i % 9 === 0 ? "barba" : "corte";
+    const servPref = i % 10 === 3 ? "alisamento" : i % 7 === 0 ? "cabelo-feminino" : i % 6 === 0 ? "barba" : i % 8 === 0 ? "sobrancelha" : i % 13 === 0 ? "pezinho" : "corte";
     while (ymd(d) <= limite) {
       const dia = diaUtil(d);
       const data = ymd(dia);
@@ -201,7 +223,7 @@ export function criarDemo() {
     if (hora) add({ data, hora, tipo: "pacote", pacoteId: pac.id, clienteId: pac.clienteId, servicoId: pac.servicoId, valor: 0, status, campanhaId: camp.id, deOferta: true, valorOferta: precoCampanha(camp, 45) });
   };
   const p1 = vender("c1", "flex3", 40, "Pix");
-  const p2 = vender("c13", "flex5", 9, "Cartão de crédito");
+  const p2 = vender("c13", "flex5", 9, "Dinheiro");
   const p3 = vender("c20", "flex3", 3, "Pix");
   usar(p1, -38, "concluido"); usar(p1, -20, "concluido");
   usar(p2, -6, "concluido");
