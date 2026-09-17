@@ -1,13 +1,14 @@
-# Matts Flex – PWA (versão 2)
+# Matts Flex – PWA (versão 3)
 
-Aplicativo para a barbearia do Matts: agenda por semanas, vagas com desconto (Matts Flex),
+Aplicativo da **Matheu's Barber**: agenda por semanas, vagas com desconto (Matts Flex),
 planos pré-pagos (Flex 3, Flex 5 e novos), campanhas, clientes com retorno e aniversário,
-e painel de faturamento.
+e painel de faturamento por período.
 
 ## Rodar no computador
 ```bash
 npm install
 npm run dev        # abre em http://localhost:5173
+npm test           # roda os testes automáticos (Vitest)
 ```
 
 ## Gerar a versão para publicar
@@ -18,6 +19,13 @@ npm run preview    # testa a versão final em http://localhost:4173
 A pasta `dist/` já vem pronta neste pacote. Para publicar, arraste a pasta `dist/` em
 https://app.netlify.com/drop, ou envie o projeto para a Vercel / GitHub Pages.
 O PWA só instala e funciona offline quando servido por **HTTPS** (ou localhost).
+Depois de mudar o código, rode `npm run build` de novo: a `dist/` fica versionada no repositório.
+
+## Logo e ícones
+A logo original fica em `recursos/logo-matheus-barber.jpeg`. Se trocar a logo, rode:
+```bash
+npm run marca      # gera a logo das telas, a logo grande dos stories e os ícones do PWA em public/icons
+```
 
 ## Instalar no celular
 - **Android (Chrome):** abra o endereço publicado → menu ⋮ → "Instalar app" (ou o botão em Ajustes).
@@ -26,19 +34,22 @@ O PWA só instala e funciona offline quando servido por **HTTPS** (ou localhost)
 ## Onde ficam os dados
 Os dados ficam **no próprio aparelho** (localStorage), sem sincronização entre aparelhos.
 - **Ajustes → Fazer backup** gera um arquivo `.json` (no celular abre o menu de compartilhar: mande para o seu WhatsApp ou Drive).
-- O painel lembra de fazer backup quando passam 7 dias.
+- Sem backup há 7 dias ou mais (com dados reais e pelo menos 3 clientes), aparece um aviso no topo de **Ajustes**
+  e o ícone de ajustes ganha um número com a quantidade de avisos.
 - Antes de restaurar um backup, carregar exemplo ou apagar tudo, o app guarda uma **cópia automática** (Ajustes → Recuperar dados anteriores).
 - Ações como cancelar horário, retirar oferta ou fechar dia mostram **Desfazer** por alguns segundos.
 
 ## Estrutura
 - `src/App.jsx` – navegação, janelas globais, salvar/desfazer/backup
-- `src/telas/` – `Painel`, `Agenda` (inclui pendências, remarcar, encaixe), `Vagas` (inclui imagem de stories), `Clientes`, `Planos`, `Ajustes`
-- `src/regras.js` – regras de negócio (preço de plano/campanha, pacotes, grade, pausas, faturamento, retorno)
+- `src/telas/` – `Painel`, `Agenda` (inclui pendências, remarcar, encaixe), `Vagas` (inclui imagem de stories), `Clientes`, `Planos`, `Ajustes`, `Rosca` (gráfico de rosca do painel)
+- `src/regras.js` – regras de negócio (preço de plano/campanha, pacotes, grade, pausas, faturamento e meta por período, vendas por serviço, Comum × Flex, retorno, avisos)
 - `src/dados.js` – armazenamento, migração de versões antigas e dados de exemplo
 - `src/util.js` – datas, formatos, WhatsApp, CSV, compartilhar arquivo
 - `src/componentes.jsx` – janela, campos, busca de cliente
 - `src/estilos.js` – CSS
 - `public/sw.js` – service worker (offline). A lista de arquivos é injetada no build pelo `vite.config.js`
+- `*.test.js(x)` – testes automáticos ao lado de cada arquivo (`npm test`)
+- `scripts/gerar-marca.mjs` e `recursos/` – geração da logo e dos ícones (`npm run marca`)
 
 ## Regras principais
 - Pacote: preço = quantidade × (preço do serviço − desconto por uso). Preço, quantidade e validade
@@ -47,12 +58,44 @@ Os dados ficam **no próprio aparelho** (localStorage), sem sincronização entr
 - Uso do pacote: agendar escolhendo "Pacote" (ou vender a vaga Flex com pacote). Marcado = reservado; Concluído ou Faltou = usado.
 - Cancelar pacote desmarca os horários futuros dele (vagas Flex voltam a ser oferta).
 - Campanha: desconto em **%**, **R$ a menos** ou **preço fixo** (ex.: Matts Flex = corte R$ 45 por R$ 35).
-- Faturamento do mês = pacotes vendidos no mês + atendimentos concluídos (preço normal e campanhas).
+- Formas de pagamento: só **Pix** e **Dinheiro**. Registros antigos com cartão viram Dinheiro.
+- Serviços padrão: Cabelo R$ 45, Cabelo feminino R$ 50, Barba R$ 25, Sobrancelha R$ 5, Pezinho R$ 5 e Alisamento R$ 60.
+  Preços que variam (cabelo maior, alisamento) são ajustados na hora com "Ajustar valor".
+- Painel por período (**Hoje**, **Essa semana**, **Esse mês**, **Mês anterior**; abre em Hoje).
+  Faturamento do período = pacotes vendidos no período + atendimentos concluídos (preço normal e campanhas).
   "Previsto" = horários marcados ainda não concluídos.
+- Meta: a meta mensal é dividida igualmente pelos dias de atendimento do mês (dias fechados não contam).
+  Meta do dia = essa parte; meta da semana = soma dos dias de atendimento da semana (cada dia usa a meta do seu mês).
+- Vendas por serviço e Comum × Flex: só atendimentos concluídos, em R$ e com o número de atendimentos.
+  **Flex** = atendimento feito em vaga Flex vendida (pago na hora ou com pacote); **Comum** = os demais.
+  Atendimento com pacote vale o que o cliente pagou por corte (a venda do pacote entra no faturamento).
+- Privacidade: o olho na barra superior (no computador, no canto do painel) troca os valores em dinheiro
+  do painel por `R$ *****`. A escolha fica lembrada no aparelho.
 - Retorno: o app calcula a frequência de cada cliente (mediana dos últimos intervalos). Passou do tempo + tolerância
   e não tem horário marcado → aparece em "Chamar". Muito tempo sem vir → "Sumido".
 
 ---
+
+## O que mudou na versão 3
+
+### Marca e visual
+- Logo e cores da **Matheu's Barber** (preto e amarelo) no app, nos ícones e na imagem de stories.
+- **Modo escuro** (Ajustes → Aparência: automático, claro ou escuro), com contraste conferido por testes.
+- Imagem de stories com a logo grande no fundo e cartões de horário com borda listrada do Flex.
+
+### Painel
+- Seletor de período (Hoje, Essa semana, Esse mês, Mês anterior) e meta em todos os períodos.
+- Gráficos de rosca: vendas por serviço e Comum × Flex.
+- Painel mais enxuto: ficam os cards de hoje, o faturamento, as roscas e o recebido por forma de pagamento.
+- Botão de privacidade para esconder os valores.
+
+### Outras mudanças
+- Tabela de serviços da barbearia e só Pix/Dinheiro como formas de pagamento.
+- Aviso de backup saiu do painel e foi para Ajustes, com número no ícone de ajustes.
+- O botão de vender plano saiu da barra superior (continua em Planos e na ficha do cliente).
+- "Desfazer venda da vaga" pede confirmação e oferece Desfazer.
+- Backup feito à noite não conta mais como do dia seguinte no aviso de backup.
+- Testes automáticos com Vitest.
 
 ## O que mudou na versão 2
 

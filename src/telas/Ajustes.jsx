@@ -4,7 +4,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { CalendarX, Coffee, Download, History, Moon, Plus, RotateCcw, ShieldCheck, Smartphone, Trash2, Upload } from "lucide-react";
 import { brl, dataLonga, DIAS_CURTO, hojeYmd, PAGAMENTOS, uid, digitos } from "../util.js";
-import { horariosDe } from "../regras.js";
+import { avisosAjustes, horariosDe } from "../regras.js";
 import { baseVazia, criarDemo, lerCopiaAnterior, migrar } from "../dados.js";
 import { Campo, NumInput, TextoBlur } from "../componentes.jsx";
 
@@ -44,6 +44,14 @@ export function Ajustes({ db, update, notify, ask, substituir, instalar, fazerBa
   return (
     <div className="mf-wrap mf-stack" style={{ gap: 14, maxWidth: 780 }}>
       <div className="mf-head"><div><h1>Ajustes</h1><p className="sub">Preços, horários e seus dados.</p></div></div>
+
+      {avisosAjustes(db).map((a) => a.id === "backup" && (
+        <section key={a.id} className="mf-banner info" style={{ marginBottom: 0 }}>
+          <ShieldCheck size={18} />
+          <span className="mf-grow">{a.texto} Os dados ficam só neste aparelho: guarde uma cópia no WhatsApp ou Drive.</span>
+          <button className="mf-btn sm" onClick={fazerBackup}><Download size={15} />Fazer backup</button>
+        </section>
+      ))}
 
       {instalar && (
         <section className="mf-banner"><Smartphone size={18} /><span className="mf-grow">Instale o Matts Flex na tela inicial para abrir como aplicativo, mesmo sem internet.</span><button className="mf-btn sm" onClick={instalar}>Instalar app</button></section>

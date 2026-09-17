@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { baseVazia } from "./dados.js";
 import {
-  capacidadeMes, capacidadePeriodo, comumFlex, faturamentoMes, fatiasRosca, intervaloPeriodo, resumoPeriodo, vendasPorServico,
+  avisosAjustes, capacidadeMes, capacidadePeriodo, comumFlex, faturamentoMes, fatiasRosca, intervaloPeriodo, metaPeriodo, resumoPeriodo, vendasPorServico,
 } from "./regras.js";
 
 // quinta-feira, 17/09/2026 às 10h
@@ -112,5 +112,67 @@ describe("fatiasRosca", () => {
     expect(fatiasRosca([{ id: "a", nome: "A", valor: 0, qtd: 2 }, { id: "b", nome: "B", valor: 7, qtd: 1 }], "qtd"))
       .toEqual([{ id: "a", nome: "A", v: 2, qtd: 2 }, { id: "b", nome: "B", v: 1, qtd: 1 }]);
     expect(fatiasRosca([{ id: "a", nome: "A", valor: 0, qtd: 2 }], "valor")).toEqual([]);
+  });
+});
+
+describe("avisosAjustes", () => {
+  const comClientes = (extra = {}) => {
+    const db = baseVazia();
+    db.clientes = [{ id: "c1", nome: "A" }, { id: "c2", nome: "B" }, { id: "c3", nome: "C" }];
+    Object.assign(db.config, extra);
+    return db;
+  };
+  it("sem nenhum backup, avisa", () => {
+    expect(avisosAjustes(comClientes(), "2026-09-17")).toEqual([{ id: "backup", texto: "Você ainda não fez nenhum backup." }]);
+  });
+  it("backup de 7 dias ou mais atrás, avisa com os dias", () => {
+    const iso = new Date(2026, 8, 9, 10, 0).toISOString();
+    expect(avisosAjustes(comClientes({ ultimoBackup: iso }), "2026-09-17")).toEqual([{ id: "backup", texto: "Último backup há 8 dias." }]);
+  });
+  it("backup recente não avisa", () => {
+    const iso = new Date(2026, 8, 14, 10, 0).toISOString();
+    expect(avisosAjustes(comClientes({ ultimoBackup: iso }), "2026-09-17")).toEqual([]);
+  });
+  it("backup feito à noite conta no dia local, não no dia seguinte em UTC", () => {
+    const iso = new Date(2026, 8, 10, 23, 30).toISOString(); // 10/09 às 23h30 no horário local
+    expect(avisosAjustes(comClientes({ ultimoBackup: iso }), "2026-09-17")).toEqual([{ id: "backup", texto: "Último backup há 7 dias." }]);
+  });
+  it("dados de exemplo ou com poucos clientes não pedem backup", () => {
+    const demo = comClientes(); demo.demo = true;
+    expect(avisosAjustes(demo, "2026-09-17")).toEqual([]);
+    const poucos = comClientes(); poucos.clientes.pop();
+    expect(avisosAjustes(poucos, "2026-09-17")).toEqual([]);
+  });
+});
+
+describe("metaPeriodo", () => {
+  // setembro/2026 atendendo de segunda a sábado: 26 dias; outubro/2026: 27 dias
+  const db = () => { const d = baseVazia(); d.config.meta = 6000; d.config.dias = [1, 2, 3, 4, 5, 6]; return d; };
+  const r2 = (n) => Math.round(n * 100) / 100;
+
+  it("no mês inteiro é a meta mensal", () => {
+    expect(metaPeriodo(db(), "2026-09-01", "2026-09-30")).toBe(6000);
+  });
+  it("num dia de atendimento é a meta dividida pelos dias de atendimento do mês", () => {
+    expect(metaPeriodo(db(), "2026-09-17", "2026-09-17")).toBe(230.77);
+  });
+  it("num domingo sem atendimento é zero", () => {
+    expect(metaPeriodo(db(), "2026-09-20", "2026-09-20")).toBe(0);
+  });
+  it("na semana soma os dias de atendimento", () => {
+    expect(metaPeriodo(db(), "2026-09-14", "2026-09-20")).toBe(r2((6000 * 6) / 26));
+  });
+  it("semana que atravessa o mês usa a meta diária de cada mês", () => {
+    expect(metaPeriodo(db(), "2026-09-28", "2026-10-04")).toBe(r2((6000 * 3) / 26 + (6000 * 3) / 27));
+  });
+  it("dia fechado (feriado) não tem meta e a meta dele se divide pelos outros dias", () => {
+    const d = db(); d.fechados = [{ data: "2026-09-07", motivo: "Feriado" }];
+    expect(metaPeriodo(d, "2026-09-07", "2026-09-07")).toBe(0);
+    expect(metaPeriodo(d, "2026-09-17", "2026-09-17")).toBe(240);
+    expect(metaPeriodo(d, "2026-09-01", "2026-09-30")).toBe(6000);
+  });
+  it("sem meta cadastrada é zero", () => {
+    const d = db(); d.config.meta = 0;
+    expect(metaPeriodo(d, "2026-09-14", "2026-09-20")).toBe(0);
   });
 });

@@ -33,6 +33,11 @@ describe("marca Matheu's Barber", () => {
     expect(m.height).toBeGreaterThanOrEqual(160);
   });
 
+  it("a logo grande da imagem de stories existe com resolução para 1080 px", async () => {
+    const m = await sharp(path.join(raiz, "public/icons/logo-grande.png")).metadata();
+    expect(m.width).toBeGreaterThanOrEqual(1080);
+  });
+
   it("o app mostra a logo no lugar do poste de barbeiro", () => {
     const app = fs.readFileSync(path.join(raiz, "src/App.jsx"), "utf8");
     expect(app).not.toMatch(/mf-pole/);

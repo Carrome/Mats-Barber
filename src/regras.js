@@ -226,6 +226,44 @@ export function recebidoNoDia(db, data) {
   return { total: r2(soma(feitos, (a) => a.valor) + soma(pac, (p) => p.valorPago)), porPagamento };
 }
 
+/* ---------- meta ---------- */
+const diaDeAtendimento = (db, data) => atendeNoDia(db, data) && !diaFechado(db, data);
+
+// Meta de um período: a meta mensal dividida igualmente pelos dias de atendimento de cada mês
+// (dia sem atendimento ou fechado não tem meta; semana que vira o mês usa a meta diária de cada mês)
+export function metaPeriodo(db, inicio, fim) {
+  const meta = Number(db.config.meta) || 0;
+  if (!meta) return 0;
+  const diasNoMes = new Map();
+  let total = 0;
+  for (let d = parse(inicio); ymd(d) <= fim; d = addDays(d, 1)) {
+    const data = ymd(d);
+    if (!diaDeAtendimento(db, data)) continue;
+    const mes = data.slice(0, 7);
+    if (!diasNoMes.has(mes)) {
+      let n = 0;
+      for (let x = inicioMes(d); x.getMonth() === d.getMonth(); x = addDays(x, 1)) if (diaDeAtendimento(db, ymd(x))) n++;
+      diasNoMes.set(mes, n);
+    }
+    total += meta / diasNoMes.get(mes);
+  }
+  return r2(total);
+}
+
+/* ---------- avisos da tela de ajustes (viram um número no ícone de ajustes) ---------- */
+export function avisosAjustes(db, hoje = hojeYmd()) {
+  const avisos = [];
+  if (!db.demo && db.clientes.length >= 3) {
+    // data do backup no horário local (à noite, em UTC, já seria o dia seguinte)
+    const quando = db.config.ultimoBackup ? new Date(db.config.ultimoBackup) : null;
+    const dias = quando && !Number.isNaN(quando.getTime()) ? diffDias(hoje, ymd(quando)) : null;
+    if (dias === null || dias >= 7) {
+      avisos.push({ id: "backup", texto: dias === null ? "Você ainda não fez nenhum backup." : `Último backup há ${dias} dias.` });
+    }
+  }
+  return avisos;
+}
+
 // Atendimentos cujo horário já passou e que ainda estão como "agendado"
 export function pendentes(db, agora = new Date()) {
   return db.agendamentos

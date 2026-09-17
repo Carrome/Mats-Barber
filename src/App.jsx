@@ -9,13 +9,13 @@
      telas/*.jsx    Painel, Agenda, Vagas, Clientes, Planos, Ajustes
    ===================================================================== */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, LayoutDashboard, RefreshCw, Settings, Sparkles, Ticket, Users, AlertTriangle } from "lucide-react";
+import { CalendarDays, Eye, EyeOff, LayoutDashboard, RefreshCw, Settings, Sparkles, Ticket, Users, AlertTriangle } from "lucide-react";
 import { CSS } from "./estilos.js";
 import { entregarArquivo, hojeYmd } from "./util.js";
-import { pendentes } from "./regras.js";
+import { avisosAjustes, pendentes } from "./regras.js";
 import { abrirDados, baseVazia, carregar, criarDemo, guardarCopiaAnterior, migrar, salvar, STORE_KEY } from "./dados.js";
 import { Sheet } from "./componentes.jsx";
-import { Painel } from "./telas/Painel.jsx";
+import { gravarOcultar, lerOcultar, Painel } from "./telas/Painel.jsx";
 import { Agenda, PendenciasSheet, SlotSheet } from "./telas/Agenda.jsx";
 import { Vagas } from "./telas/Vagas.jsx";
 import { Clientes, ClienteDetalhe } from "./telas/Clientes.jsx";
@@ -51,6 +51,8 @@ export default function App() {
   const [persistido, setPersistido] = useState(null);
   const [erroSalvar, setErroSalvar] = useState(false);
   const [novaVersao, setNovaVersao] = useState(false);
+  const [ocultarValores, setOcultarValores] = useState(lerOcultar);
+  const alternarOcultar = () => setOcultarValores((v) => { gravarOcultar(!v); return !v; });
   const timer = useRef(null);
   const desfazerRef = useRef(null);
   const dbRef = useRef(null);
@@ -173,6 +175,8 @@ export default function App() {
   const pacoteSel = pacoteVer && db.pacotes.find((p) => p.id === pacoteVer);
   const clienteSel = clienteVer && db.clientes.find((c) => c.id === clienteVer);
   const qtdPend = pendentes(db).length;
+  const qtdAvisos = avisosAjustes(db).length;
+  const rotuloAjustes = qtdAvisos ? `Ajustes (${qtdAvisos} ${qtdAvisos === 1 ? "aviso" : "avisos"})` : "Ajustes";
 
   const tema = db.config.tema === "claro" || db.config.tema === "escuro" ? db.config.tema : undefined;
   return (
@@ -185,7 +189,7 @@ export default function App() {
             <Icon size={19} />{label}{id === "agenda" && qtdPend > 0 && <span className="mf-cont" aria-label={`${qtdPend} pendentes`}>{qtdPend}</span>}
           </button>
         ))}
-        <button className={"fim" + (aba === "ajustes" ? " on" : "")} onClick={() => go("ajustes")}><Settings size={19} />Ajustes</button>
+        <button className={"fim" + (aba === "ajustes" ? " on" : "")} onClick={() => go("ajustes")}><Settings size={19} />Ajustes{qtdAvisos > 0 && <span className="mf-cont" aria-label={rotuloAjustes}>{qtdAvisos}</span>}</button>
       </nav>
 
       <main className="mf-main">
@@ -193,8 +197,11 @@ export default function App() {
           <img className="mf-logo" src="icons/logo.png" alt="" />
           <div style={{ minWidth: 0 }}><div className="nome">Matts Flex</div><div className="loja mf-ellip">{db.config.nome}</div></div>
           <div className="sp" />
-          <button className="mf-iconbtn" onClick={() => setVenda({ cliente: null })} aria-label="Vender plano"><Ticket size={21} /></button>
-          <button className="mf-iconbtn" onClick={() => go("ajustes")} aria-label="Ajustes"><Settings size={21} /></button>
+          {/* privacidade: fica em todas as abas; os valores escondidos são os do painel */}
+          <button className="mf-iconbtn" onClick={alternarOcultar} aria-pressed={ocultarValores} aria-label={ocultarValores ? "Mostrar valores" : "Esconder valores"} title={ocultarValores ? "Mostrar valores" : "Esconder valores"}>
+            {ocultarValores ? <EyeOff size={21} /> : <Eye size={21} />}
+          </button>
+          <button className="mf-iconbtn" onClick={() => go("ajustes")} aria-label={rotuloAjustes}><Settings size={21} />{qtdAvisos > 0 && <span className="mf-badge" aria-hidden="true">{qtdAvisos > 9 ? "9+" : qtdAvisos}</span>}</button>
         </header>
 
         {(db.demo || novaVersao || erroSalvar) && (
@@ -218,7 +225,7 @@ export default function App() {
           </div>
         )}
 
-        {aba === "painel" && <Painel {...props} fazerBackup={fazerBackup} />}
+        {aba === "painel" && <Painel {...props} ocultar={ocultarValores} alternarOcultar={alternarOcultar} />}
         {aba === "agenda" && <Agenda key={agendaData || "hoje"} {...props} dataInicial={agendaData} />}
         {aba === "vagas" && <Vagas {...props} />}
         {aba === "clientes" && <Clientes {...props} />}

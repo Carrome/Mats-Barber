@@ -40,9 +40,7 @@ o que é o brinde e como fica visível na ficha do cliente.
 ## Ideias sem prioridade definida
 - Programa de indicação automatizado ("Amigo para Amigo")
 - Plano "Pai e Filho"
-- Meta mensal configurável
 - Comparação ano a ano
 - Lista de espera
 - Notificação push
-- Modo escuro
 - Link público de **agendamento** (não só visualização)

@@ -158,7 +158,15 @@ export function Vagas({ db, update, notify }) {
 /* ---------------------------------------------------------------------
    Imagem 1080x1920 para stories do Instagram/WhatsApp
    --------------------------------------------------------------------- */
-async function desenharStory(db, data, lista) {
+// Resolve com a imagem carregada, ou null se falhar (a arte sai sem ela)
+const carregarImagem = (src) => new Promise((ok) => {
+  const img = new Image();
+  img.onload = () => ok(img);
+  img.onerror = () => ok(null);
+  img.src = src;
+});
+
+export async function desenharStory(db, data, lista) {
   const W = 1080, H = 1920;
   const cv = document.createElement("canvas");
   cv.width = W; cv.height = H;
@@ -171,16 +179,24 @@ async function desenharStory(db, data, lista) {
 
   // fundo
   g.fillStyle = "#000000"; g.fillRect(0, 0, W, H);
-  // faixas de poste de barbeiro
-  const faixa = (y, h) => {
-    g.save(); g.beginPath(); g.rect(0, y, W, h); g.clip();
-    const cores = ["#C8372D", "#FFFFFF", "#2A4E8A", "#FFFFFF"];
-    for (let x = -h * 2, i = 0; x < W + h * 2; x += 36, i++) {
-      g.fillStyle = cores[i % 4];
-      g.beginPath(); g.moveTo(x, y + h); g.lineTo(x + 36, y + h); g.lineTo(x + 36 + h, y); g.lineTo(x + h, y); g.closePath(); g.fill();
+  // logo da barbearia de fundo, o maior possível sem cortar (largura inteira) e suave para não atrapalhar a leitura
+  const logo = await carregarImagem("icons/logo-grande.png");
+  if (logo) {
+    const lw = W, lh = Math.round((lw * logo.naturalHeight) / logo.naturalWidth);
+    g.save(); g.globalAlpha = 0.16; g.drawImage(logo, 0, Math.round((H - lh) / 2), lw, lh); g.restore();
+  }
+  // listras diagonais do poste de barbeiro (tema Flex) dentro da área já recortada
+  const CORES_POSTE = ["#C8372D", "#FFFFFF", "#2A4E8A", "#FFFFFF"];
+  const listras = (x, y, w, h) => {
+    for (let px = x - h * 2, i = 0; px < x + w + h * 2; px += 36, i++) {
+      g.fillStyle = CORES_POSTE[i % 4];
+      g.beginPath(); g.moveTo(px, y + h); g.lineTo(px + 36, y + h); g.lineTo(px + 36 + h, y); g.lineTo(px + h, y); g.closePath(); g.fill();
     }
-    g.restore();
   };
+  const arredondado = (x, y, w, h, r) => {
+    g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+  };
+  const faixa = (y, h) => { g.save(); g.beginPath(); g.rect(0, y, W, h); g.clip(); listras(0, y, W, h); g.restore(); };
   faixa(0, 70); faixa(H - 70, 70);
 
   // centraliza e diminui a fonte até caber na largura
@@ -204,10 +220,11 @@ async function desenharStory(db, data, lista) {
   itens.forEach((a, i) => {
     const y = topo + i * (alt + gap);
     const s = servicoDe(db, a.servicoId);
-    g.fillStyle = "#FFFFFF";
-    const r = 28, x = 90, w = W - 180;
-    g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + alt, r); g.arcTo(x + w, y + alt, x, y + alt, r); g.arcTo(x, y + alt, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); g.fill();
-    g.textAlign = "left"; g.fillStyle = "#C8372D"; g.font = `800 ${alt * 0.56}px ${DISPLAY}`;
+    const r = 28, x = 90, w = W - 180, borda = 12;
+    // borda listrada do Flex e miolo branco por cima
+    g.save(); arredondado(x, y, w, alt, r); g.clip(); listras(x, y, w, alt); g.restore();
+    g.fillStyle = "#FFFFFF"; arredondado(x + borda, y + borda, w - borda * 2, alt - borda * 2, r - borda / 2); g.fill();
+    g.textAlign = "left"; g.fillStyle = "#000000"; g.font = `800 ${alt * 0.56}px ${DISPLAY}`;
     g.fillText(a.hora, x + 40, y + alt * 0.68);
     g.fillStyle = "#1C1C1C"; g.font = `600 ${alt * 0.24}px ${TEXTO}`;
     g.fillText(s?.nome || "", x + alt * 1.75, y + alt * 0.6);

@@ -3,26 +3,34 @@
    ===================================================================== */
 import React, { useMemo, useState } from "react";
 import {
-  Clock, Download, FileSpreadsheet, MessageCircle, ShieldCheck, Wallet,
+  Clock, Eye, EyeOff, FileSpreadsheet, MessageCircle, Wallet,
 } from "lucide-react";
 import {
   addDays, brl, dataLonga, ddmm, ddmmaa, entregarArquivo, gerarCsv, hojeYmd,
-  momento, nomeMes, parse, plural, primeiroNome, whats, ymd, diffDias,
+  momento, nomeMes, parse, plural, primeiroNome, whats, ymd,
 } from "../util.js";
 import {
   atendeNoDia, clienteDe, comumFlex, diaFechado, fatiasRosca, infoPacote, intervaloPeriodo,
-  pendentes, PERIODOS, recebidoNoDia, resumoPeriodo, servicoDe, TIPOS_ATENDIMENTO, vendasPorServico,
+  metaPeriodo, pendentes, PERIODOS, recebidoNoDia, resumoPeriodo, servicoDe, TIPOS_ATENDIMENTO, vendasPorServico,
 } from "../regras.js";
 import { useAgora, Seg } from "../componentes.jsx";
 import { Rosca } from "./Rosca.jsx";
 
 const TITULO_FATURAMENTO = { hoje: "Faturamento de hoje", semana: "Faturamento da semana", mes: "Faturamento do mês até agora", mesAnterior: "Faturamento do mês" };
+const ROTULO_META = { hoje: "meta do dia", semana: "meta da semana", mes: "meta", mesAnterior: "meta" };
 const corComumFlex = (id) => (id === "flex" ? "var(--serie-flex)" : "var(--serie-comum)");
 const atendimentos = (fatia) => `${fatia.qtd} atend.`;
 
-export function Painel({ db, notify, abrir, fazerBackup }) {
+// Esconder valores (como em app de banco): preferência só deste aparelho
+const CHAVE_OCULTAR = "mf-ocultar-valores";
+export const lerOcultar = () => { try { return localStorage.getItem(CHAVE_OCULTAR) === "1"; } catch (e) { return false; } };
+export const gravarOcultar = (v) => { try { localStorage.setItem(CHAVE_OCULTAR, v ? "1" : "0"); } catch (e) { /* sem armazenamento: vale só agora */ } };
+const OCULTO = "R$ *****";
+
+export function Painel({ db, notify, abrir, ocultar, alternarOcultar }) {
   const agora = useAgora();
   const [periodo, setPeriodo] = useState("hoje");
+  const dinheiro = ocultar ? () => OCULTO : brl;
   const cfg = db.config;
   const hoje = hojeYmd();
   const P = useMemo(() => intervaloPeriodo(periodo, parse(hoje)), [periodo, hoje]);
@@ -40,10 +48,11 @@ export function Painel({ db, notify, abrir, fazerBackup }) {
 
   const ags = db.agendamentos.filter((a) => a.data >= P.inicio && a.data <= P.fim);
   const meta = Number(cfg.meta) || 0;
-  const pct = meta ? Math.min(1, f.total / meta) : 0;
+  const metaP = metaPeriodo(db, P.inicio, P.fim);
+  const pct = metaP ? Math.min(1, f.total / metaP) : 0;
   let diasRestantes = 0;
   if (ehAtual) for (let d = parse(hoje); ymd(d) <= ultimo; d = addDays(d, 1)) if (atendeNoDia(db, ymd(d)) && !diaFechado(db, ymd(d))) diasRestantes++;
-  const falta = Math.max(0, meta - f.total - f.previsto);
+  const falta = Math.max(0, metaP - f.total - f.previsto);
 
   // Hoje e próximo dia de atendimento
   const pend = pendentes(db, agora);
@@ -55,8 +64,6 @@ export function Painel({ db, notify, abrir, fazerBackup }) {
   for (let i = 1; i <= 7; i++) { const d = ymd(addDays(new Date(), i)); if (atendeNoDia(db, d) && !diaFechado(db, d)) { amanha = d; break; } }
   const deAmanha = amanha ? agsDia(amanha).filter((a) => a.status === "agendado") : [];
 
-  const backupDias = cfg.ultimoBackup ? diffDias(hoje, cfg.ultimoBackup.slice(0, 10)) : null;
-  const pedirBackup = !db.demo && db.clientes.length >= 3 && (backupDias === null || backupDias >= 7);
 
   const exportarCsv = async () => {
     const linhas = [["Data", "Hora", "Cliente", "Telefone", "Serviço", "Tipo", "Situação", "Pagamento", "Valor (R$)", "Observação"]];
@@ -86,18 +93,17 @@ export function Painel({ db, notify, abrir, fazerBackup }) {
 
   return (
     <div className="mf-wrap mf-stack" style={{ gap: 16 }}>
+      {/* no celular o botão fica na barra superior; aqui é o do computador */}
+      <div className="mf-painel-topo">
+        <button className="mf-iconbtn" onClick={alternarOcultar} aria-pressed={ocultar} aria-label={ocultar ? "Mostrar valores" : "Esconder valores"} title={ocultar ? "Mostrar valores" : "Esconder valores"}>
+          {ocultar ? <EyeOff size={22} /> : <Eye size={22} />}
+        </button>
+      </div>
       {pend.length > 0 && (
         <div className="mf-alerta">
           <Clock size={18} />
           <span className="mf-grow"><b>{plural(pend.length, "atendimento sem fechar", "atendimentos sem fechar")}.</b> Marque se foram feitos para o faturamento ficar certo.</span>
           <button className="mf-btn sm poste" onClick={abrir.pendencias}>Fechar agora</button>
-        </div>
-      )}
-      {pedirBackup && (
-        <div className="mf-banner info" style={{ marginBottom: 0 }}>
-          <ShieldCheck size={18} />
-          <span className="mf-grow">{backupDias === null ? "Você ainda não fez nenhum backup." : `Último backup há ${backupDias} dias.`} Os dados ficam só neste aparelho: guarde uma cópia no WhatsApp ou Drive.</span>
-          <button className="mf-btn sm" onClick={fazerBackup}><Download size={15} />Fazer backup</button>
         </div>
       )}
 
@@ -117,9 +123,9 @@ export function Painel({ db, notify, abrir, fazerBackup }) {
             <div className="mf-kpis">
               <div className="mf-kpi"><small>Marcados</small><b>{deHoje.length}</b></div>
               <div className="mf-kpi"><small>Concluídos</small><b>{deHoje.filter((a) => a.status === "concluido").length}</b></div>
-              <div className="mf-kpi"><small>Recebido</small><b>{brl(recebidoHoje.total)}</b></div>
+              <div className="mf-kpi"><small>Recebido</small><b>{dinheiro(recebidoHoje.total)}</b></div>
             </div>
-            {recebidoHoje.total > 0 && <small>{Object.entries(recebidoHoje.porPagamento).map(([k, v]) => `${k} ${brl(v)}`).join(" · ")}</small>}
+            {recebidoHoje.total > 0 && <small>{Object.entries(recebidoHoje.porPagamento).map(([k, v]) => `${k} ${dinheiro(v)}`).join(" · ")}</small>}
           </section>
 
           <section className="mf-panel mf-stack" style={{ gap: 8 }}>
@@ -156,18 +162,20 @@ export function Painel({ db, notify, abrir, fazerBackup }) {
 
       <section className="mf-hero">
         <p style={{ opacity: 0.8 }}>{TITULO_FATURAMENTO[periodo]}</p>
-        <div className="valor">{brl(f.total)}</div>
-        <p style={{ opacity: 0.8 }}>{f.previsto > 0 ? `Mais ${brl(f.previsto)} em horários já marcados` : "Nenhum valor previsto em horários marcados"}</p>
-        {meta > 0 && mensal && (<>
+        <div className="valor">{dinheiro(f.total)}</div>
+        <p style={{ opacity: 0.8 }}>{f.previsto > 0 ? `Mais ${dinheiro(f.previsto)} em horários já marcados` : "Nenhum valor previsto em horários marcados"}</p>
+        {metaP > 0 && (<>
           <div className="barra"><i style={{ width: `${pct * 100}%` }} /></div>
-          <small style={{ color: "rgba(255,255,255,.78)" }}>{Math.round(pct * 100)}% da meta de {brl(meta)}</small>
-          {ehAtual && falta > 0 && diasRestantes > 0 && <p className="falta">Faltam {brl(falta)} além do que já está marcado: cerca de {brl(falta / diasRestantes)} por dia de atendimento restante ({diasRestantes}).</p>}
+          <small style={{ color: "rgba(255,255,255,.78)" }}>{Math.round(pct * 100)}% da {ROTULO_META[periodo]} de {dinheiro(metaP)}</small>
+          {ehAtual && falta > 0 && diasRestantes > 0 && <p className="falta">Faltam {dinheiro(falta)} além do que já está marcado: cerca de {dinheiro(falta / diasRestantes)} por dia de atendimento restante ({diasRestantes}).</p>}
           {ehAtual && f.total + f.previsto >= meta && <p className="falta">Com os horários marcados, a meta do mês fica batida.</p>}
+          {!mensal && falta > 0 && <p className="falta">Faltam {dinheiro(falta)} além do que já está marcado para bater a {ROTULO_META[periodo]}.</p>}
+          {!mensal && f.total + f.previsto >= metaP && <p className="falta">Com os horários marcados, a {ROTULO_META[periodo]} fica batida.</p>}
         </>)}
         <div className="fontes">
-          <span><i className="mf-dot" style={{ background: "#8FB0E6" }} />Pacotes {brl(f.pacotes)}</span>
-          <span><i className="mf-dot" style={{ background: "#fff" }} />Serviços {brl(f.servicos)}</span>
-          <span><i className="mf-dot" style={{ background: "#F08A80" }} />Campanhas {brl(f.campanhas)}</span>
+          <span><i className="mf-dot" style={{ background: "#8FB0E6" }} />Pacotes {dinheiro(f.pacotes)}</span>
+          <span><i className="mf-dot" style={{ background: "#fff" }} />Serviços {dinheiro(f.servicos)}</span>
+          <span><i className="mf-dot" style={{ background: "#F08A80" }} />Campanhas {dinheiro(f.campanhas)}</span>
         </div>
       </section>
 
@@ -175,13 +183,13 @@ export function Painel({ db, notify, abrir, fazerBackup }) {
         <section className="mf-panel">
           <h3>Vendas por serviço</h3>
           {vendas.length === 0 ? <p className="sub">Nenhum atendimento concluído neste período.</p> : (
-            <Rosca lado titulo="Em R$" fatias={fatiasRosca(vendas, "valor")} cor={corServico} formatar={brl} detalhe={atendimentos} />
+            <Rosca lado titulo="Em R$" fatias={fatiasRosca(vendas, "valor")} cor={corServico} formatar={dinheiro} detalhe={atendimentos} />
           )}
         </section>
         <section className="mf-panel">
           <h3>Comum × Flex</h3>
           {vendas.length === 0 ? <p className="sub">Nenhum atendimento concluído neste período.</p> : (
-            <Rosca lado titulo="Em R$" fatias={fatiasRosca(itensCF, "valor")} cor={corComumFlex} formatar={brl} detalhe={atendimentos} />
+            <Rosca lado titulo="Em R$" fatias={fatiasRosca(itensCF, "valor")} cor={corComumFlex} formatar={dinheiro} detalhe={atendimentos} />
           )}
         </section>
       </div>
@@ -193,7 +201,7 @@ export function Painel({ db, notify, abrir, fazerBackup }) {
               <div key={k}>
                 <span>{k}</span>
                 <span className="trilho"><i style={{ width: `${(v / totalPag) * 100}%`, background: k === "Não informado" ? "#BDBDBD" : undefined }} /></span>
-                <b>{brl(v)}</b>
+                <b>{dinheiro(v)}</b>
               </div>
             ))}
           </div>

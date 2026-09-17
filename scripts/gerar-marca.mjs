@@ -20,6 +20,8 @@ async function icone(nome, lado, ocupa) {
 }
 
 await sharp(ORIGEM).resize({ height: 240 }).png({ palette: true, colors: 64 }).toFile(path.join(ICONES, "logo.png"));
+// fundo da imagem de stories (ocupa a largura inteira: 1080 px)
+await sharp(ORIGEM).resize({ width: 1080 }).png({ palette: true, colors: 64 }).toFile(path.join(ICONES, "logo-grande.png"));
 await icone("icon-192.png", 192, 0.9);
 await icone("icon-512.png", 512, 0.9);
 await icone("apple-touch-icon.png", 180, 0.86);

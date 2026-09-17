@@ -164,6 +164,8 @@ font-family:'Archivo',system-ui,-apple-system,sans-serif;color:var(--tinta);back
 .mf-slot.oferta.encerrada{opacity:.4;filter:grayscale(1)}
 .mf-slot.faltou .t{text-decoration:line-through;color:var(--poste-tx)}
 .mf-slot.feito{opacity:.8;padding-right:26px}
+.mf-painel-topo{display:none;justify-content:flex-end;margin:-6px -6px -10px 0}
+@media (min-width:900px){.mf-painel-topo{display:flex}}
 .mf-periodo{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
 @media (max-width:560px){.mf-periodo .mf-seg{width:100%}.mf-periodo .mf-seg button{padding:8px 4px;font-size:13px}}
 .mf-rosca{margin:0;min-width:0}
