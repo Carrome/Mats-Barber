@@ -1,4 +1,4 @@
-// Matts Flex – service worker (app shell + cache em tempo de execução)
+// Mats Flex – service worker (app shell + cache em tempo de execução)
 // A lista de arquivos (marcador ARQUIVOS) e o nome do cache são preenchidos no build pelo vite.config.js
 const CACHE = "matts-flex-v1";
 const SHELL = [...new Set(["./", "./index.html", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", /*ARQUIVOS*/])];

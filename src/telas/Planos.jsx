@@ -159,7 +159,7 @@ function PlanoForm({ db, update, notify, ask, plano, onClose }) {
     <Sheet titulo={plano.id ? "Editar plano" : "Novo plano"} sub={vendidos ? "Mudanças valem só para as próximas vendas. Pacotes já vendidos mantêm preço e validade." : undefined} onClose={onClose}>
       <div className="mf-stack">
         <div className="mf-grid" style={{ gridTemplateColumns: "1fr 110px" }}>
-          <Campo label="Nome do plano"><input className="mf-input" value={f.nome} onChange={set("nome")} placeholder="Matts Flex 10" autoFocus={!plano.id} /></Campo>
+          <Campo label="Nome do plano"><input className="mf-input" value={f.nome} onChange={set("nome")} placeholder="Mats Flex 10" autoFocus={!plano.id} /></Campo>
           <Campo label="Código"><input className="mf-input" value={f.sigla} onChange={set("sigla")} placeholder="F10" maxLength={4} disabled={!!vendidos} /></Campo>
         </div>
         {siglaUsada && <small style={{ color: "var(--poste-tx)" }}>Já existe um plano com esse código.</small>}
@@ -219,7 +219,7 @@ function CampanhaForm({ db, update, notify, ask, camp, onClose }) {
   return (
     <Sheet titulo={camp.id ? "Editar campanha" : "Nova campanha"} onClose={onClose}>
       <div className="mf-stack">
-        <Campo label="Nome da campanha"><input className="mf-input" value={f.nome} onChange={set("nome")} placeholder="Ex.: Matts Flex manhã" autoFocus={!camp.id} /></Campo>
+        <Campo label="Nome da campanha"><input className="mf-input" value={f.nome} onChange={set("nome")} placeholder="Ex.: Mats Flex manhã" autoFocus={!camp.id} /></Campo>
         <Campo label="Onde o desconto vale">
           <Seg valor={f.tipo} onChange={(v) => setF({ ...f, tipo: v })} opcoes={[["vaga", "Horários vagos"], ["servico", "Serviços na agenda"]]} />
         </Campo>

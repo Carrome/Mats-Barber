@@ -84,3 +84,24 @@ describe("abrirDados", () => {
     expect(d.clientes).toHaveLength(1);
   });
 });
+
+describe("nome da barbearia", () => {
+  it("quem estava no nome antigo passa a ver Barbearia do Matheus", () => {
+    const m = migrar({ versao: 3, config: { nome: "Barbearia do Matts" } });
+    expect(m.config.nome).toBe("Barbearia do Matheus");
+  });
+
+  it("nome escolhido à mão pelo dono não é sobrescrito", () => {
+    const m = migrar({ versao: 3, config: { nome: "Studio do Zé" } });
+    expect(m.config.nome).toBe("Studio do Zé");
+  });
+
+  it("quem já está na versão nova não é mexido de novo", () => {
+    const m = migrar({ versao: 4, config: { nome: "Barbearia do Matts" } });
+    expect(m.config.nome).toBe("Barbearia do Matts");
+  });
+
+  it("instalação nova já nasce com o nome certo", () => {
+    expect(baseVazia().config.nome).toBe("Barbearia do Matheus");
+  });
+});

@@ -1,5 +1,5 @@
 /* =====================================================================
-   Matts Flex – app principal
+   Mats Flex – app principal
    Estrutura:
      util.js        datas, formatos, WhatsApp, arquivos
      regras.js      regras de negócio (pacotes, campanhas, agenda, retorno)
@@ -152,7 +152,7 @@ export default function App() {
   const fazerBackup = useCallback(async () => {
     const atual = dbRef.current;
     const blob = new Blob([JSON.stringify(atual, null, 2)], { type: "application/json" });
-    const r = await entregarArquivo(`matts-flex-backup-${hojeYmd()}.json`, blob, "Backup Matts Flex");
+    const r = await entregarArquivo(`mats-flex-backup-${hojeYmd()}.json`, blob, "Backup Mats Flex");
     if (r === "compartilhado" || r === "baixado") {
       update((d) => { d.config.ultimoBackup = new Date().toISOString(); return d; });
       notify(r === "baixado" ? "Backup baixado. Guarde o arquivo no Drive ou WhatsApp." : "Backup enviado");
@@ -166,7 +166,7 @@ export default function App() {
   if (!db) {
     return (
       <div className="mf"><style>{CSS}</style>
-        <div className="mf-loading"><img className="mf-logo" src="icons/logo.png" alt="Matheu's Barber" /><span className="dsp" style={{ fontSize: 28 }}>Matts Flex</span></div>
+        <div className="mf-loading"><img className="mf-logo" src="icons/logo.png" alt="Matheu's Barber" /><span className="dsp" style={{ fontSize: 28 }}>Mats Flex</span></div>
       </div>
     );
   }
@@ -183,7 +183,7 @@ export default function App() {
     <div className="mf" data-tema={tema}>
       <style>{CSS}</style>
       <nav className="mf-rail" aria-label="Menu principal">
-        <div className="marca"><img className="mf-logo" src="icons/logo.png" alt="" /><div><div className="nome">Matts Flex</div><div className="loja">{db.config.nome}</div></div></div>
+        <div className="marca"><img className="mf-logo" src="icons/logo.png" alt="" /><div><div className="nome">Mats Flex</div><div className="loja">{db.config.nome}</div></div></div>
         {NAV.map(([id, label, Icon]) => (
           <button key={id} className={aba === id ? "on" : ""} onClick={() => go(id)} aria-current={aba === id ? "page" : undefined}>
             <Icon size={19} />{label}{id === "agenda" && qtdPend > 0 && <span className="mf-cont" aria-label={`${qtdPend} pendentes`}>{qtdPend}</span>}
@@ -195,7 +195,7 @@ export default function App() {
       <main className="mf-main">
         <header className="mf-top">
           <img className="mf-logo" src="icons/logo.png" alt="" />
-          <div style={{ minWidth: 0 }}><div className="nome">Matts Flex</div><div className="loja mf-ellip">{db.config.nome}</div></div>
+          <div style={{ minWidth: 0 }}><div className="nome">Mats Flex</div><div className="loja mf-ellip">{db.config.nome}</div></div>
           <div className="sp" />
           {/* privacidade: fica em todas as abas; os valores escondidos são os do painel */}
           <button className="mf-iconbtn" onClick={alternarOcultar} aria-pressed={ocultarValores} aria-label={ocultarValores ? "Mostrar valores" : "Esconder valores"} title={ocultarValores ? "Mostrar valores" : "Esconder valores"}>
@@ -210,7 +210,7 @@ export default function App() {
               <div className="mf-alerta"><AlertTriangle size={18} /><span className="mf-grow">Não foi possível salvar neste aparelho (memória cheia ou modo anônimo). Faça um backup agora.</span><button className="mf-btn sm poste" onClick={fazerBackup}>Backup</button></div>
             )}
             {novaVersao && (
-              <div className="mf-banner info" style={{ marginBottom: 0 }}><RefreshCw size={18} /><span className="mf-grow">Nova versão do Matts Flex instalada.</span><button className="mf-btn sm" onClick={() => window.location.reload()}>Atualizar</button></div>
+              <div className="mf-banner info" style={{ marginBottom: 0 }}><RefreshCw size={18} /><span className="mf-grow">Nova versão do Mats Flex instalada.</span><button className="mf-btn sm" onClick={() => window.location.reload()}>Atualizar</button></div>
             )}
             {db.demo && (
               <div className="mf-banner" style={{ marginBottom: 0 }}>

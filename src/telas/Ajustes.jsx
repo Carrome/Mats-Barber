@@ -35,7 +35,7 @@ export function Ajustes({ db, update, notify, ask, substituir, instalar, fazerBa
         ask(`Substituir todos os dados atuais pelo backup (${obj.clientes.length} clientes, ${obj.agendamentos.length} horários)? Uma cópia dos dados atuais fica guardada neste aparelho.`, () => {
           substituir(migrar(obj), "Backup restaurado");
         });
-      } catch (err) { notify("Arquivo inválido: escolha um backup do Matts Flex (.json)"); }
+      } catch (err) { notify("Arquivo inválido: escolha um backup do Mats Flex (.json)"); }
     };
     r.readAsText(file);
     e.target.value = "";
@@ -54,7 +54,7 @@ export function Ajustes({ db, update, notify, ask, substituir, instalar, fazerBa
       ))}
 
       {instalar && (
-        <section className="mf-banner"><Smartphone size={18} /><span className="mf-grow">Instale o Matts Flex na tela inicial para abrir como aplicativo, mesmo sem internet.</span><button className="mf-btn sm" onClick={instalar}>Instalar app</button></section>
+        <section className="mf-banner"><Smartphone size={18} /><span className="mf-grow">Instale o Mats Flex na tela inicial para abrir como aplicativo, mesmo sem internet.</span><button className="mf-btn sm" onClick={instalar}>Instalar app</button></section>
       )}
 
       <section className="mf-panel mf-stack">
@@ -211,7 +211,7 @@ export function Ajustes({ db, update, notify, ask, substituir, instalar, fazerBa
           })}><Trash2 size={15} />Começar do zero</button>
         </div>
       </section>
-      <p className="sub" style={{ textAlign: "center" }}>Matts Flex · versão 2</p>
+      <p className="sub" style={{ textAlign: "center" }}>Mats Flex · versão 2</p>
     </div>
   );
 }

@@ -6,9 +6,9 @@ import { horariosDe, pausaEm, precoCampanha, precoPlano } from "./regras.js";
 
 export const STORE_KEY = "matts-flex-app-v1";
 const KEY_ANTERIOR = STORE_KEY + "-anterior";
-export const VERSAO = 3;
+export const VERSAO = 4;
 
-// Tabela de serviços da barbearia (id "corte" mantido: os planos Matts Flex apontam para ele)
+// Tabela de serviços da barbearia (id "corte" mantido: os planos Mats Flex apontam para ele)
 export const SERVICOS_PADRAO = [
   { id: "corte", nome: "Cabelo", preco: 45 },
   { id: "cabelo-feminino", nome: "Cabelo feminino", preco: 50 },
@@ -66,17 +66,17 @@ export function baseVazia() {
     versao: VERSAO,
     demo: false,
     config: {
-      nome: "Barbearia do Matts", abertura: "08:00", intervalo: 45, qtdHorarios: 15, dias: [1, 2, 3, 4, 5, 6],
+      nome: "Barbearia do Matheus", abertura: "08:00", intervalo: 45, qtdHorarios: 15, dias: [1, 2, 3, 4, 5, 6],
       alertaDias: 7, meta: 6000, ddd: "", pagamentoPadrao: "Pix", retornoPadrao: 30, toleranciaRetorno: 5,
       pausas: [], ultimoBackup: "", tema: "auto",
     },
     servicos: SERVICOS_PADRAO.map((s) => ({ ...s })),
     planos: [
-      { id: "flex3", nome: "Matts Flex 3", sigla: "F3", servicoId: "corte", qtd: 3, descontoPorUso: 10, validadeDias: 45, ativo: true, somenteVagas: true, descricao: "3 cortes pagos adiantado, com R$ 10 de desconto em cada. Usados em horários Flex." },
-      { id: "flex5", nome: "Matts Flex 5", sigla: "F5", servicoId: "corte", qtd: 5, descontoPorUso: 10, validadeDias: 45, ativo: true, somenteVagas: true, descricao: "5 cortes pagos adiantado, com R$ 10 de desconto em cada. Usados em horários Flex." },
+      { id: "flex3", nome: "Mats Flex 3", sigla: "F3", servicoId: "corte", qtd: 3, descontoPorUso: 10, validadeDias: 45, ativo: true, somenteVagas: true, descricao: "3 cortes pagos adiantado, com R$ 10 de desconto em cada. Usados em horários Flex." },
+      { id: "flex5", nome: "Mats Flex 5", sigla: "F5", servicoId: "corte", qtd: 5, descontoPorUso: 10, validadeDias: 45, ativo: true, somenteVagas: true, descricao: "5 cortes pagos adiantado, com R$ 10 de desconto em cada. Usados em horários Flex." },
     ],
     campanhas: [
-      { id: "mattsflex", nome: "Matts Flex", tipo: "vaga", descontoTipo: "valor", descontoValor: 10, descontoPct: 20, servicoIds: [], inicio: "", fim: "", ativa: true, descricao: "Horário vago da agenda divulgado nos stories com preço menor." },
+      { id: "mattsflex", nome: "Mats Flex", tipo: "vaga", descontoTipo: "valor", descontoValor: 10, descontoPct: 20, servicoIds: [], inicio: "", fim: "", ativa: true, descricao: "Horário vago da agenda divulgado nos stories com preço menor." },
     ],
     clientes: [],
     pacotes: [],
@@ -98,6 +98,9 @@ export function migrar(d) {
     SERVICOS_PADRAO.forEach((p) => { if (!out.servicos.some((s) => s.id === p.id)) out.servicos.push({ ...p }); });
   }
   const cfg = out.config;
+  // versão 4: a barbearia passou a se chamar "Barbearia do Matheus".
+  // Só troca quem ainda estava no nome antigo: nome escolhido à mão fica como está.
+  if (versaoAntiga < 4 && cfg.nome === "Barbearia do Matts") cfg.nome = "Barbearia do Matheus";
   if (!Array.isArray(cfg.dias) || !cfg.dias.length) cfg.dias = b.config.dias;
   if (!Array.isArray(cfg.pausas)) cfg.pausas = [];
   out.campanhas = out.campanhas.map((c) => ({ servicoIds: [], descontoTipo: "pct", descontoValor: 0, descontoPct: 0, descricao: "", ...c }));
@@ -131,7 +134,7 @@ export function montarPacote(db, { clienteId, planoId, dataCompra, pagamento }) 
 }
 
 /* ---------------------------------------------------------------------
-   Dados de exemplo: ~40 clientes com os 3 perfis do Matts
+   Dados de exemplo: ~40 clientes com os 3 perfis do Matheus
    (a cada 15 dias, mensal e eventual), ~3 meses de histórico
    --------------------------------------------------------------------- */
 function mulberry32(a) {
@@ -211,7 +214,7 @@ export function criarDemo() {
     }
   });
 
-  // pacotes Matts Flex
+  // pacotes Mats Flex
   const vender = (clienteId, planoId, diasAtras, pagamento) => {
     const p = montarPacote(db, { clienteId, planoId, dataCompra: ymd(diaUtil(addDays(hoje, -diasAtras))), pagamento });
     db.pacotes.push(p);
@@ -229,7 +232,7 @@ export function criarDemo() {
   usar(p2, -6, "concluido");
   usar(p3, 2, "agendado");
 
-  // vagas Matts Flex: vendidas, não vendidas e em oferta
+  // vagas Mats Flex: vendidas, não vendidas e em oferta
   for (let d = new Date(inicio); ymd(d) <= limite; d = addDays(d, 1)) {
     const data = ymd(d);
     if (!cfg.dias.includes(d.getDay())) continue;

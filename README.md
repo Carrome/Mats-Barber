@@ -1,6 +1,6 @@
-# Matts Flex – PWA (versão 3)
+# Mats Flex – PWA (versão 3)
 
-Aplicativo da **Matheu's Barber**: agenda por semanas, vagas com desconto (Matts Flex),
+Aplicativo da **Matheu's Barber**: agenda por semanas, vagas com desconto (Mats Flex),
 planos pré-pagos (Flex 3, Flex 5 e novos), campanhas, clientes com retorno e aniversário,
 e painel de faturamento por período.
 
@@ -57,7 +57,7 @@ Os dados ficam **no próprio aparelho** (localStorage), sem sincronização entr
 - Plano pode ser marcado como **"só em horário Flex"**: ao vender uma vaga em oferta, dá para escolher "Pacote Flex".
 - Uso do pacote: agendar escolhendo "Pacote" (ou vender a vaga Flex com pacote). Marcado = reservado; Concluído ou Faltou = usado.
 - Cancelar pacote desmarca os horários futuros dele (vagas Flex voltam a ser oferta).
-- Campanha: desconto em **%**, **R$ a menos** ou **preço fixo** (ex.: Matts Flex = corte R$ 45 por R$ 35).
+- Campanha: desconto em **%**, **R$ a menos** ou **preço fixo** (ex.: Mats Flex = corte R$ 45 por R$ 35).
 - Formas de pagamento: só **Pix** e **Dinheiro**. Registros antigos com cartão viram Dinheiro.
 - Serviços padrão: Cabelo R$ 45, Cabelo feminino R$ 50, Barba R$ 25, Sobrancelha R$ 5, Pezinho R$ 5 e Alisamento R$ 60.
   Preços que variam (cabelo maior, alisamento) são ajustados na hora com "Ajustar valor".

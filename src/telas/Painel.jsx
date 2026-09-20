@@ -83,7 +83,7 @@ export function Painel({ db, notify, abrir, ocultar, alternarOcultar }) {
     linhas.push(["Faturamento total", f.total]);
     linhas.push(["Pacotes", f.pacotes]); linhas.push(["Serviços", f.servicos]); linhas.push(["Campanhas", f.campanhas]);
     Object.entries(f.porPagamento).filter(([, v]) => v > 0).forEach(([k, v]) => linhas.push([k, v]));
-    const r = await entregarArquivo(`matts-flex-${key}.csv`, gerarCsv(linhas), `Relatório ${nomeMes(ref)}`);
+    const r = await entregarArquivo(`mats-flex-${key}.csv`, gerarCsv(linhas), `Relatório ${nomeMes(ref)}`);
     if (r === "baixado") notify("Relatório baixado");
     if (r === "erro") notify("Não foi possível gerar o arquivo");
   };

@@ -1,5 +1,5 @@
 /* =====================================================================
-   Vagas (Matts Flex): ofertar horários livres e divulgar
+   Vagas (Mats Flex): ofertar horários livres e divulgar
    ===================================================================== */
 import React, { useEffect, useMemo, useState } from "react";
 import { Copy, Image as ImageIcon, Megaphone, MessageCircle, Share2, X, Download } from "lucide-react";

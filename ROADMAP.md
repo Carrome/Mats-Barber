@@ -1,7 +1,7 @@
-# Roadmap – Matts Flex
+# Roadmap – Mats Flex
 
 Lista de próximas melhorias, na ordem de prioridade definida pelo dono da barbearia.
-Itens ainda não implementados; regras de negócio devem ser confirmadas com o Matts antes de codar.
+Itens ainda não implementados; regras de negócio devem ser confirmadas com o Matheus antes de codar.
 
 ## 1. Pacote aniversariante
 Pacote especial oferecido no mês/aniversário do cliente (preço, validade e regras a definir).
