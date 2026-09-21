@@ -48,3 +48,47 @@ export async function sessaoAtual() {
     return null;
   }
 }
+
+const TABELA = "barbearia";
+
+export async function lerNuvem() {
+  const vazio = { existe: false, versao: null, dados: null, em: null };
+  try {
+    const { data, error } = await cliente.from(TABELA).select("versao, dados, atualizado_em").maybeSingle();
+    if (error) return { ...vazio, erro: traduzirErro(error) };
+    if (!data) return vazio;
+    return { existe: true, versao: data.versao, dados: data.dados, em: data.atualizado_em };
+  } catch (e) {
+    return { ...vazio, erro: traduzirErro(e) };
+  }
+}
+
+export async function criarNuvem(dados, origem) {
+  try {
+    const sessao = await sessaoAtual();
+    if (!sessao) return { ok: false, erro: "Sessão encerrada." };
+    const { data, error } = await cliente.from(TABELA)
+      .insert({ dono: sessao.user.id, dados, atualizado_por: origem })
+      .select("versao").single();
+    return error ? { ok: false, erro: traduzirErro(error) } : { ok: true, versao: data.versao };
+  } catch (e) {
+    return { ok: false, erro: traduzirErro(e) };
+  }
+}
+
+// A gravação declara de qual versão partiu. Se o banco já passou dessa
+// versão, nada é alterado e devolvemos conflito: quem está atrasado baixa
+// antes de insistir. O número novo quem escolhe é o gatilho, no servidor.
+export async function gravarNuvem(dados, versaoBase, origem) {
+  try {
+    const { data, error } = await cliente.from(TABELA)
+      .update({ dados, atualizado_por: origem })
+      .eq("versao", versaoBase)
+      .select("versao");
+    if (error) return { ok: false, erro: traduzirErro(error) };
+    if (!data || data.length === 0) return { ok: false, conflito: true };
+    return { ok: true, versao: data[0].versao };
+  } catch (e) {
+    return { ok: false, erro: traduzirErro(e) };
+  }
+}
