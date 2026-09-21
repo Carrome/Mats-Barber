@@ -30,15 +30,15 @@ export function Login({ onEntrou }) {
         <span className="dsp" style={{ fontSize: 28 }}>Mats Flex</span>
         <form className="mf-stack" style={{ width: "min(320px, 86vw)", gap: 12 }} onSubmit={enviar}>
           <Campo label="Usuário">
-            <input value={usuario} onChange={(e) => setUsuario(e.target.value)}
+            <input className="mf-input" value={usuario} onChange={(e) => setUsuario(e.target.value)}
               autoCapitalize="none" autoCorrect="off" autoComplete="username" />
           </Campo>
           <Campo label="Senha">
-            <input type="password" value={senha} onChange={(e) => setSenha(e.target.value)}
+            <input className="mf-input" type="password" value={senha} onChange={(e) => setSenha(e.target.value)}
               autoComplete="current-password" />
           </Campo>
           {erro && <div className="mf-alerta" role="alert">{erro}</div>}
-          <button className="mf-btn poste" type="submit" disabled={indo || !usuario || !senha}>
+          <button className="mf-btn" type="submit" disabled={indo || !usuario || !senha}>
             {indo ? "Entrando…" : "Entrar"}
           </button>
         </form>
