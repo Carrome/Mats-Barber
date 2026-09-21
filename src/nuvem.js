@@ -19,7 +19,7 @@ export function emailDe(usuario) {
 export function traduzirErro(erro) {
   const m = String(erro?.message || "");
   if (/invalid login credentials/i.test(m)) return "Usuário ou senha incorretos.";
-  if (/failed to fetch|network|fetch failed/i.test(m)) return "Sem conexão com a internet.";
+  if (/failed to fetch|network|fetch failed|load failed/i.test(m)) return "Sem conexão com a internet.";
   if (/email not confirmed/i.test(m)) return "Esta conta ainda não foi liberada.";
   if (/rate limit|too many/i.test(m)) return "Muitas tentativas seguidas. Espere um minuto.";
   return "Não foi possível entrar agora. Tente de novo.";
