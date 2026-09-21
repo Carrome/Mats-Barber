@@ -1,14 +1,30 @@
 // @vitest-environment jsdom
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import App from "./App.jsx";
+
+vi.mock("./nuvem.js", () => ({
+  sessaoAtual: vi.fn(),
+  lerNuvem: vi.fn(),
+  criarNuvem: vi.fn(),
+  gravarNuvem: vi.fn(),
+  entrar: vi.fn(),
+  sair: vi.fn(),
+}));
+import { criarNuvem, lerNuvem, sessaoAtual } from "./nuvem.js";
 
 beforeEach(() => {
   const m = new Map();
   vi.stubGlobal("localStorage", { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), clear: () => m.clear() });
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal("matchMedia", (q) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
+  vi.clearAllMocks();
+  // Padrão para os testes que não são sobre o portão em si: sessão já
+  // guardada no aparelho e leitura do banco sem resposta (sem rede). Assim
+  // nenhum teste alheio ao login acorda a reconciliação sem querer.
+  sessaoAtual.mockResolvedValue({ user: { id: "u1" } });
+  lerNuvem.mockResolvedValue({ existe: false, versao: null, dados: null, erro: "Sem conexão com a internet." });
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -103,5 +119,38 @@ describe("aviso de backup", () => {
     const barra = await screen.findByRole("banner");
     const ajustes = within(barra).getByRole("button", { name: "Ajustes" });
     expect(ajustes.textContent).toBe("");
+  });
+});
+
+describe("portão de login e carga inicial", () => {
+  it("sem sessão, mostra a tela de entrada e não o app", async () => {
+    sessaoAtual.mockResolvedValue(null);
+    render(<App />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /entrar/i })).toBeTruthy());
+    // "banner" só existe no cabeçalho do app principal (Login não tem header)
+    expect(screen.queryByRole("banner")).toBe(null);
+  });
+
+  it("com sessão e dados reais no aparelho, abre o app mesmo se a leitura do banco falhar", async () => {
+    const { baseVazia, STORE_KEY } = await import("./dados.js");
+    const db = baseVazia();
+    db.clientes = [{ id: "c1", nome: "Ana" }];
+    localStorage.setItem(STORE_KEY, JSON.stringify(db));
+    // sessaoAtual e lerNuvem seguem o padrão do beforeEach: sessão presente, leitura com erro de rede.
+    render(<App />);
+    await waitFor(() => expect(screen.getByRole("banner")).toBeTruthy());
+    // a reconciliação tentou falar com o banco, mas o erro de leitura barrou qualquer decisão
+    await waitFor(() => expect(lerNuvem).toHaveBeenCalled());
+    expect(criarNuvem).not.toHaveBeenCalled();
+  });
+
+  it("com dados de exemplo ainda não resolvidos, não fala com o banco (trava contra apagar dados reais)", async () => {
+    // localStorage vazio: abrirDados gera os dados de exemplo (demo:true) e o
+    // aviso "Começar do zero / Continuar com eles" ainda não foi respondido.
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/dados de exemplo/i)).toBeTruthy());
+    await new Promise((r) => setTimeout(r, 0)); // dá chance a qualquer efeito pendente rodar
+    expect(lerNuvem).not.toHaveBeenCalled();
+    expect(criarNuvem).not.toHaveBeenCalled();
   });
 });

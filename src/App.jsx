@@ -14,6 +14,8 @@ import { CSS } from "./estilos.js";
 import { entregarArquivo, hojeYmd } from "./util.js";
 import { avisosAjustes, pendentes } from "./regras.js";
 import { abrirDados, baseVazia, carregar, criarDemo, guardarCopiaAnterior, migrar, salvar, STORE_KEY } from "./dados.js";
+import { criarNuvem, lerNuvem, sessaoAtual } from "./nuvem.js";
+import { decidirAcao, ehVazio, gravarMarca, lerMarca } from "./sincronia.js";
 import { Sheet } from "./componentes.jsx";
 import { gravarOcultar, lerOcultar, Painel } from "./telas/Painel.jsx";
 import { Agenda, PendenciasSheet, SlotSheet } from "./telas/Agenda.jsx";
@@ -21,6 +23,7 @@ import { Vagas } from "./telas/Vagas.jsx";
 import { Clientes, ClienteDetalhe } from "./telas/Clientes.jsx";
 import { PacoteDetalhe, Planos, VendaForm } from "./telas/Planos.jsx";
 import { Ajustes } from "./telas/Ajustes.jsx";
+import { Login } from "./telas/Login.jsx";
 
 const NAV = [
   ["painel", "Painel", LayoutDashboard],
@@ -34,6 +37,9 @@ const clonar = (x) => (typeof structuredClone === "function" ? structuredClone(x
 
 export default function App() {
   const [db, setDb] = useState(null);
+  // null = ainda checando, false = precisa entrar, objeto = entrou
+  const [sessao, setSessao] = useState(null);
+  const [escolhaMigracao, setEscolhaMigracao] = useState(null);
   const [aba, setAba] = useState(() => {
     try { const a = new URLSearchParams(window.location.search).get("aba"); return ABAS.includes(a) ? a : "painel"; }
     catch (e) { return "painel"; }
@@ -57,11 +63,21 @@ export default function App() {
   const desfazerRef = useRef(null);
   const dbRef = useRef(null);
   dbRef.current = db;
+  const reconciliado = useRef(false);
 
-  /* ---------- carregar, instalar, proteger dados ---------- */
+  /* ---------- checar sessão, carregar o que já está no aparelho, instalar, proteger dados ---------- */
   useEffect(() => {
     let vivo = true;
-    carregar().then((d) => { if (vivo) setDb(abrirDados(d)); });
+    (async () => {
+      const s = await sessaoAtual();
+      if (!vivo) return;
+      if (!s) { setSessao(false); return; }
+      setSessao(s);
+      // Abre com o que tem no aparelho antes de falar com a rede: sem
+      // internet o app precisa funcionar do mesmo jeito.
+      const local = abrirDados(await carregar());
+      if (vivo) setDb(local);
+    })();
     const h = (e) => { e.preventDefault(); setInstalarEvt(e); };
     const instalado = () => setInstalarEvt(null);
     const versao = () => setNovaVersao(true);
@@ -81,6 +97,36 @@ export default function App() {
       window.removeEventListener("mf-nova-versao", versao);
     };
   }, []);
+
+  /* ---------- reconciliar aparelho e banco, uma única vez ----------
+     Não roda enquanto os dados forem de exemplo (db.demo): o dono pode ter
+     agendamentos reais lançados por cima do exemplo, e ehVazio() trata demo
+     como vazio de propósito (trava contra aparelho zerado). Decidir aqui
+     apagaria esses dados reais. O aviso que já existe ("Começar do zero" /
+     "Continuar com eles") resolve isso; quando o dono escolhe, db.demo vira
+     false, o efeito roda de novo (está nas deps) e reconcilia então. */
+  useEffect(() => {
+    if (!sessao || !db || db.demo || reconciliado.current) return;
+    reconciliado.current = true;
+    let vivo = true;
+    (async () => {
+      const nuvem = await lerNuvem();
+      if (!vivo || nuvem.erro) return; // leitura falhou: não decide nada, o aparelho segue com o que já tinha
+      const acao = decidirAcao({ marca: lerMarca(), local: db, nuvem });
+      if (acao === "baixar") {
+        setDb(migrar(nuvem.dados));
+        gravarMarca(nuvem.versao, "celular");
+      } else if (acao === "criar") {
+        const base = ehVazio(db) ? baseVazia() : db;
+        const r = await criarNuvem(base, "celular");
+        if (r.ok) { setDb(base); gravarMarca(r.versao, "celular"); }
+      } else if (acao === "perguntar") {
+        setEscolhaMigracao({ local: db, nuvem });
+      }
+      // "sincronizar" (já existe marca): nada a fazer aqui, é o caso de rotina tratado alhures.
+    })();
+    return () => { vivo = false; };
+  }, [sessao, db]);
 
   /* ---------- salvar (com atraso curto) e ao sair do app ---------- */
   useEffect(() => {
@@ -162,6 +208,8 @@ export default function App() {
   const ios = typeof navigator !== "undefined" && /iphone|ipad|ipod/i.test(navigator.userAgent);
   const standalone = typeof window !== "undefined" && (window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone);
   const instalar = instalarEvt ? async () => { instalarEvt.prompt(); try { await instalarEvt.userChoice; } catch (e) { /* */ } setInstalarEvt(null); } : null;
+
+  if (sessao === false) return <Login onEntrou={() => window.location.reload()} />;
 
   if (!db) {
     return (
