@@ -33,6 +33,11 @@ const NAV = [
   ["planos", "Planos", Ticket],
 ];
 const ABAS = ["painel", "agenda", "vagas", "clientes", "planos", "ajustes"];
+
+// Etapa 1 em andamento. Enquanto o banco não estiver configurado (SQL rodado e
+// usuário criado), o app abre direto, com ou sem internet, e não sincroniza.
+// Trocar para true religa a tela de entrada.
+const EXIGIR_LOGIN = false;
 const clonar = (x) => (typeof structuredClone === "function" ? structuredClone(x) : JSON.parse(JSON.stringify(x)));
 
 export default function App() {
@@ -69,14 +74,13 @@ export default function App() {
   useEffect(() => {
     let vivo = true;
     (async () => {
-      const s = await sessaoAtual();
-      if (!vivo) return;
-      if (!s) { setSessao(false); return; }
-      setSessao(s);
-      // Abre com o que tem no aparelho antes de falar com a rede: sem
-      // internet o app precisa funcionar do mesmo jeito.
+      // O que está no aparelho vem primeiro: o app abre com ou sem internet,
+      // e a tela nunca espera a checagem de sessão responder.
       const local = abrirDados(await carregar());
-      if (vivo) setDb(local);
+      if (!vivo) return;
+      setDb(local);
+      const s = await sessaoAtual();
+      if (vivo) setSessao(s || false);
     })();
     const h = (e) => { e.preventDefault(); setInstalarEvt(e); };
     const instalado = () => setInstalarEvt(null);
@@ -209,7 +213,7 @@ export default function App() {
   const standalone = typeof window !== "undefined" && (window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone);
   const instalar = instalarEvt ? async () => { instalarEvt.prompt(); try { await instalarEvt.userChoice; } catch (e) { /* */ } setInstalarEvt(null); } : null;
 
-  if (sessao === false) return <Login onEntrou={() => window.location.reload()} />;
+  if (EXIGIR_LOGIN && sessao === false) return <Login onEntrou={() => window.location.reload()} />;
 
   if (!db) {
     return (

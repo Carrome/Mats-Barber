@@ -123,12 +123,15 @@ describe("aviso de backup", () => {
 });
 
 describe("portão de login e carga inicial", () => {
-  it("sem sessão, mostra a tela de entrada e não o app", async () => {
+  // EXIGIR_LOGIN está desligado enquanto o banco não é configurado: o app abre
+  // direto, com ou sem internet. Quando a constante voltar a true, este teste
+  // volta a ser "sem sessão, mostra a tela de entrada e não o app".
+  it("com o login desligado, abre o app sem pedir senha mesmo sem sessão", async () => {
     sessaoAtual.mockResolvedValue(null);
     render(<App />);
-    await waitFor(() => expect(screen.getByRole("button", { name: /entrar/i })).toBeTruthy());
     // "banner" só existe no cabeçalho do app principal (Login não tem header)
-    expect(screen.queryByRole("banner")).toBe(null);
+    await waitFor(() => expect(screen.getByRole("banner")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: /entrar/i })).toBe(null);
   });
 
   it("com sessão e dados reais no aparelho, abre o app mesmo se a leitura do banco falhar", async () => {
