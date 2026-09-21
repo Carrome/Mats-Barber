@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decidirAcao, ehVazio, gravarMarca, lerMarca, limparMarca, MARCA_KEY } from "./sincronia.js";
 import { baseVazia } from "./dados.js";
 
@@ -72,7 +73,11 @@ describe("decidirAcao", () => {
 });
 
 describe("marca de sincronia", () => {
-  beforeEach(() => window.localStorage.clear());
+  beforeEach(() => {
+    const m = new Map();
+    vi.stubGlobal("localStorage", { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), clear: () => m.clear() });
+  });
+  afterEach(() => { vi.unstubAllGlobals(); });
 
   it("começa sem marca", () => {
     expect(lerMarca()).toBe(null);
