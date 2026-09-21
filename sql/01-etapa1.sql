@@ -15,8 +15,11 @@ create table if not exists public.barbearia (
 alter table public.barbearia enable row level security;
 
 -- Cada dono enxerga e mexe apenas na própria linha.
+drop policy if exists "dono le" on public.barbearia;
 create policy "dono le"    on public.barbearia for select using (auth.uid() = dono);
+drop policy if exists "dono cria" on public.barbearia;
 create policy "dono cria"  on public.barbearia for insert with check (auth.uid() = dono);
+drop policy if exists "dono grava" on public.barbearia;
 create policy "dono grava" on public.barbearia for update
   using (auth.uid() = dono) with check (auth.uid() = dono);
 
