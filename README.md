@@ -1,4 +1,4 @@
-# Mats Flex – PWA (versão 3)
+# Mats Flex – PWA (versão 4)
 
 Aplicativo da **Matheu's Barber**: agenda por semanas, vagas com desconto (Mats Flex),
 planos pré-pagos (Flex 3, Flex 5 e novos), campanhas, clientes com retorno e aniversário,
@@ -16,8 +16,10 @@ npm test           # roda os testes automáticos (Vitest)
 npm run build      # cria a pasta dist/
 npm run preview    # testa a versão final em http://localhost:4173
 ```
-A pasta `dist/` já vem pronta neste pacote. Para publicar, arraste a pasta `dist/` em
-https://app.netlify.com/drop, ou envie o projeto para a Vercel / GitHub Pages.
+**Publicação oficial:** https://mats-barber.vercel.app. O Vercel está ligado ao GitHub e publica sozinho
+a cada push na `main` (roda o build por conta própria). O trabalho em andamento fica na branch
+`supabase-etapa1`; para publicar, a `main` avança até ela (`git merge --ff-only`) e recebe o push.
+A pasta `dist/` também vem pronta, para publicar arrastando em https://app.netlify.com/drop.
 O PWA só instala e funciona offline quando servido por **HTTPS** (ou localhost).
 Depois de mudar o código, rode `npm run build` de novo: a `dist/` fica versionada no repositório.
 
@@ -32,20 +34,32 @@ npm run marca      # gera a logo das telas, a logo grande dos stories e os ícon
 - **iPhone (Safari):** abra o endereço → Compartilhar → "Adicionar à Tela de Início".
 
 ## Onde ficam os dados
-Os dados ficam **no próprio aparelho** (localStorage), sem sincronização entre aparelhos.
+Hoje os dados ficam **no próprio aparelho** (localStorage). O app abre com ou sem internet e **não pede login**
+(`EXIGIR_LOGIN = false` em `src/App.jsx`). A cópia no banco da nuvem está sendo construída (veja o ROADMAP).
+- **Uso real × modo teste:** são dois conjuntos de dados separados, em chaves diferentes do aparelho
+  (`matts-flex-app-v1` para o real, `matts-flex-teste-v1` para o teste). Cada conjunto carrega a marca `teste`,
+  e é ela que decide onde ele é gravado, então um lado nunca sobrescreve o outro.
+  **Ajustes → Testar aplicativo** abre o exemplo para o Matheus treinar; o aviso no topo volta ao uso real.
+  No teste não há backup nem restauração. Só o uso real vai sincronizar com a nuvem, nunca o teste.
+- **Primeira abertura da versão 4:** o que já estava no aparelho vai para o modo teste e o uso real começa sem
+  clientes nem agendamentos, mantendo ajustes, serviços, planos e campanhas. O original também fica como cópia automática.
 - **Ajustes → Fazer backup** gera um arquivo `.json` (no celular abre o menu de compartilhar: mande para o seu WhatsApp ou Drive).
 - Sem backup há 7 dias ou mais (com dados reais e pelo menos 3 clientes), aparece um aviso no topo de **Ajustes**
   e o ícone de ajustes ganha um número com a quantidade de avisos.
-- Antes de restaurar um backup, carregar exemplo ou apagar tudo, o app guarda uma **cópia automática** (Ajustes → Recuperar dados anteriores).
+- Antes de restaurar um backup ou apagar tudo, o app guarda uma **cópia automática** (Ajustes → Recuperar dados anteriores).
 - Ações como cancelar horário, retirar oferta ou fechar dia mostram **Desfazer** por alguns segundos.
 
 ## Estrutura
-- `src/App.jsx` – navegação, janelas globais, salvar/desfazer/backup
+- `src/App.jsx` – navegação, janelas globais, salvar/desfazer/backup, troca entre uso real e modo teste
 - `src/telas/` – `Painel`, `Agenda` (inclui pendências, remarcar, encaixe), `Vagas` (inclui imagem de stories), `Clientes`, `Planos`, `Ajustes`, `Rosca` (gráfico de rosca do painel)
 - `src/regras.js` – regras de negócio (preço de plano/campanha, pacotes, grade, pausas, faturamento e meta por período, vendas por serviço, Comum × Flex, retorno, avisos)
-- `src/dados.js` – armazenamento, migração de versões antigas e dados de exemplo
+- `src/dados.js` – armazenamento (uso real e teste separados), migração de versões antigas e dados de exemplo
+- `src/config.js`, `src/nuvem.js`, `src/sincronia.js`, `src/telas/Login.jsx` – banco na nuvem (Supabase):
+  endereço e chave pública, leitura/gravação com controle de versão, decisão de quem manda ao abrir, tela de entrada
+- `sql/` – script do banco (`01-etapa1.sql`, já rodado no projeto) e instruções em `sql/LEIA-ME.md`
+- `docs/superpowers/` – especificação e plano da sincronização com a nuvem
 - `src/util.js` – datas, formatos, WhatsApp, CSV, compartilhar arquivo
-- `src/componentes.jsx` – janela, campos, busca de cliente
+- `src/componentes.jsx` – janela, campos, busca de cliente, forma de pagamento (inclui dividido)
 - `src/estilos.js` – CSS
 - `public/sw.js` – service worker (offline). A lista de arquivos é injetada no build pelo `vite.config.js`
 - `*.test.js(x)` – testes automáticos ao lado de cada arquivo (`npm test`)
@@ -58,7 +72,17 @@ Os dados ficam **no próprio aparelho** (localStorage), sem sincronização entr
 - Uso do pacote: agendar escolhendo "Pacote" (ou vender a vaga Flex com pacote). Marcado = reservado; Concluído ou Faltou = usado.
 - Cancelar pacote desmarca os horários futuros dele (vagas Flex voltam a ser oferta).
 - Campanha: desconto em **%**, **R$ a menos** ou **preço fixo** (ex.: Mats Flex = corte R$ 45 por R$ 35).
-- Formas de pagamento: só **Pix** e **Dinheiro**. Registros antigos com cartão viram Dinheiro.
+- Formas de pagamento: **Pix**, **Dinheiro** ou **Dividido** (parte em dinheiro, o resto no Pix), em todo lugar onde se
+  escolhe a forma. Guarda-se só o valor em dinheiro; o Pix é o total menos ele. Registros antigos com cartão viram Dinheiro.
+- **Vários serviços no mesmo horário:** o atendimento tem um serviço principal e **adicionais** (cada um com seu valor).
+  O total cobrado soma tudo; em vendas por serviço, cada adicional conta para o próprio serviço. Com pacote, o principal
+  sai do pacote e só os adicionais são cobrados na hora.
+- **Horários:** a grade padrão é de hora em hora. Cada dia pode ter a própria lista de horários (Agenda → opções do dia →
+  Horários deste dia: tirar, acrescentar em qualquer hora, voltar ao padrão) e o **almoço daquele dia** (início e duração).
+  Horário com cliente marcado não pode ser tirado. Pausas fixas têm liga/desliga; o almoço fixo antigo veio desligado.
+- Atendimento **concluído** aparece em verde esmaecido na agenda.
+- Imagem de stories: o Matheus escolhe os horários (começa sem nenhum, **até 6 por imagem**, para ficar legível).
+  O título vem da campanha das ofertas do dia.
 - Serviços padrão: Cabelo R$ 45, Cabelo feminino R$ 50, Barba R$ 25, Sobrancelha R$ 5, Pezinho R$ 5 e Alisamento R$ 60.
   Preços que variam (cabelo maior, alisamento) são ajustados na hora com "Ajustar valor".
 - Painel por período (**Hoje**, **Essa semana**, **Esse mês**, **Mês anterior**; abre em Hoje).
@@ -75,6 +99,23 @@ Os dados ficam **no próprio aparelho** (localStorage), sem sincronização entr
   e não tem horário marcado → aparece em "Chamar". Muito tempo sem vir → "Sumido".
 
 ---
+
+## O que mudou na versão 4
+
+### Novidades
+- **Vários serviços no mesmo horário** (ex.: cabelo + barba), com total na hora de cobrar.
+- **Pagamento dividido** entre dinheiro e Pix, com os dois valores ligados (mexe em um, o outro acompanha).
+- **Horários do dia** editáveis um por um e **almoço por dia**; grade padrão de hora em hora
+  (quem usava 45 min foi convertido mantendo o mesmo fim de expediente).
+- **Testar aplicativo** em Ajustes: exemplo separado do uso real, para o Matheus aprender sem bagunçar a agenda de verdade.
+  "Carregar dados de exemplo" saiu de Ajustes.
+- **Stories:** escolha de até 6 horários por imagem.
+- Atendimento concluído em **verde esmaecido**.
+
+### Nuvem (em andamento, ainda desligado)
+- Banco criado e script rodado (tabela única da barbearia, sem permissão de apagar, versão controlada pelo servidor).
+- Leitura e gravação com trava de versão, tela de entrada com usuário e senha e reconciliação ao abrir já existem no código,
+  mas o login está desligado até a etapa 1 terminar.
 
 ## O que mudou na versão 3
 
