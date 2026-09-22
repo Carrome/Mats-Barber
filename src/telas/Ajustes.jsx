@@ -2,7 +2,7 @@
    Ajustes: barbearia, serviços, agenda, pausas, retorno e dados
    ===================================================================== */
 import React, { useEffect, useRef, useState } from "react";
-import { CalendarX, Coffee, Download, History, Moon, Plus, RotateCcw, ShieldCheck, Smartphone, Trash2, Upload } from "lucide-react";
+import { CalendarX, Coffee, Download, FlaskConical, History, Moon, Plus, RotateCcw, ShieldCheck, Smartphone, Trash2, Upload } from "lucide-react";
 import { brl, dataLonga, DIAS_CURTO, hojeYmd, PAGAMENTOS, uid, digitos } from "../util.js";
 import { avisosAjustes, horariosDe } from "../regras.js";
 import { baseVazia, criarDemo, lerCopiaAnterior, migrar } from "../dados.js";
@@ -11,11 +11,12 @@ import { Campo, NumInput, TextoBlur } from "../componentes.jsx";
 const ORDEM_DIAS = [1, 2, 3, 4, 5, 6, 0];
 const ordenarDias = (dias) => [...dias].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
 
-export function Ajustes({ db, update, notify, ask, substituir, instalar, fazerBackup, persistido }) {
+export function Ajustes({ db, update, notify, ask, substituir, instalar, fazerBackup, persistido, modo = "real", trocarModo }) {
   const cfg = db.config;
   const arquivo = useRef(null);
   const [copia, setCopia] = useState(null);
-  useEffect(() => { lerCopiaAnterior().then(setCopia); }, [db.demo]);
+  const emTeste = modo === "teste";
+  useEffect(() => { lerCopiaAnterior(emTeste).then(setCopia); }, [emTeste, db]);
   const setCfg = (k, v) => update((d) => { d.config[k] = v; return d; });
   const setServ = (id, k, v) => update((d) => { const s = d.servicos.find((x) => x.id === id); if (s) s[k] = v; return d; });
   const emUso = (id) => db.agendamentos.some((a) => a.servicoId === id) || db.planos.some((p) => p.servicoId === id) || db.pacotes.some((p) => p.servicoId === id);
@@ -119,7 +120,7 @@ export function Ajustes({ db, update, notify, ask, substituir, instalar, fazerBa
 
       <section className="mf-panel mf-stack">
         <h3><Coffee size={18} style={{ verticalAlign: -3 }} /> Pausas fixas</h3>
-        <p className="sub">Almoço, sábado mais curto ou qualquer horário que se repete toda semana. Os horários ficam bloqueados na agenda e não aparecem como vagas.</p>
+        <p className="sub">Horários que se repetem toda semana, como sábado mais curto. Ficam bloqueados na agenda e não aparecem como vagas. O almoço agora é marcado dia a dia, em “opções do dia” na agenda.</p>
         {(cfg.pausas || []).map((p) => {
           const invalida = !p.de || !p.ate || p.ate <= p.de;
           const afetados = horas.filter((h) => h >= p.de && h < p.ate);
@@ -127,6 +128,7 @@ export function Ajustes({ db, update, notify, ask, substituir, instalar, fazerBa
             <div key={p.id} className="mf-pausa-ed">
               <div className="mf-row">
                 <TextoBlur className="mf-input" value={p.motivo} onCommit={(v) => setPausa(p.id, { motivo: v })} placeholder="Motivo" aria-label="Motivo da pausa" />
+                <label className="mf-toggle" style={{ flex: "none" }}><input type="checkbox" checked={p.ativa !== false} onChange={(e) => setPausa(p.id, { ativa: e.target.checked })} />Ligada</label>
                 <button className="mf-iconbtn" aria-label="Excluir pausa" onClick={() => { update((d) => { d.config.pausas = d.config.pausas.filter((x) => x.id !== p.id); return d; }, true); notify("Pausa excluída", true); }}><Trash2 size={18} color="#C8372D" /></button>
               </div>
               <div className="mf-g-2-fixo">
@@ -139,11 +141,12 @@ export function Ajustes({ db, update, notify, ask, substituir, instalar, fazerBa
                 ))}
               </div>
               {invalida ? <small style={{ color: "var(--poste-tx)" }}>O horário final precisa ser depois do inicial.</small>
+                : p.ativa === false ? <small>Desligada: não bloqueia nada.</small>
                 : <small>Bloqueia {afetados.length ? afetados.join(", ") : "nenhum horário da grade"}{p.dias?.length ? "" : " (escolha os dias)"}.</small>}
             </div>
           );
         })}
-        <button className="mf-btn sm alt" style={{ alignSelf: "flex-start" }} onClick={() => update((d) => { d.config.pausas = [...(d.config.pausas || []), { id: uid(), motivo: "Almoço", dias: [...d.config.dias], de: "12:00", ate: "13:00" }]; return d; })}><Plus size={15} />Adicionar pausa</button>
+        <button className="mf-btn sm alt" style={{ alignSelf: "flex-start" }} onClick={() => update((d) => { d.config.pausas = [...(d.config.pausas || []), { id: uid(), motivo: "Pausa", dias: [...d.config.dias], de: "12:00", ate: "13:00", ativa: true }]; return d; })}><Plus size={15} />Adicionar pausa</button>
       </section>
 
       <section className="mf-panel mf-stack">
@@ -179,6 +182,21 @@ export function Ajustes({ db, update, notify, ask, substituir, instalar, fazerBa
       </section>
 
       <section className="mf-panel mf-stack">
+        <h3><FlaskConical size={18} style={{ verticalAlign: -3 }} /> Testar aplicativo</h3>
+        {emTeste ? (<>
+          <p className="sub">Você está no modo teste. Pode marcar, vender e apagar à vontade: nada daqui vai para o uso real, e o que fizer aqui continua guardado para a próxima vez.</p>
+          <div className="mf-row mf-wrapr">
+            <button className="mf-btn sm" onClick={() => trocarModo("real")}>Voltar ao uso real</button>
+            <button className="mf-btn sm alt" onClick={() => ask("Recomeçar o teste com os dados de exemplo? O que foi feito no teste até agora é substituído. O uso real não é tocado.", () => substituir(criarDemo(), "Exemplo recomeçado"))}><RotateCcw size={15} />Recomeçar o exemplo</button>
+          </div>
+        </>) : (<>
+          <p className="sub">Abre um app de mentira, com clientes e horários de exemplo, para aprender a usar sem medo. Seus dados reais ficam guardados do jeito que estão e voltam quando você sair do teste.</p>
+          <button className="mf-btn sm alt" style={{ alignSelf: "flex-start" }} onClick={() => trocarModo("teste")}><FlaskConical size={15} />Testar aplicativo</button>
+        </>)}
+      </section>
+
+      {!emTeste && (
+      <section className="mf-panel mf-stack">
         <h3>Dados</h3>
         <p className="sub">
           Os dados ficam guardados só neste aparelho. Baixe um backup de vez em quando e mande para o seu WhatsApp ou Drive.
@@ -204,13 +222,13 @@ export function Ajustes({ db, update, notify, ask, substituir, instalar, fazerBa
         )}
         <div className="mf-sep" />
         <div className="mf-row mf-wrapr">
-          <button className="mf-btn sm alt" onClick={() => ask("Trocar tudo pelos dados de exemplo? Uma cópia dos dados atuais fica guardada.", () => substituir(criarDemo(), "Dados de exemplo carregados"))}><RotateCcw size={15} />Carregar dados de exemplo</button>
           <button className="mf-btn sm poste" onClick={() => ask("Apagar clientes, pacotes e agenda? Planos, campanhas e ajustes são mantidos. Uma cópia fica guardada.", () => {
             const v = baseVazia();
             substituir({ ...v, config: { ...db.config, ultimoBackup: db.config.ultimoBackup }, servicos: db.servicos, planos: db.planos, campanhas: db.campanhas }, "Dados apagados");
           })}><Trash2 size={15} />Começar do zero</button>
         </div>
       </section>
+      )}
       <p className="sub" style={{ textAlign: "center" }}>Mats Flex · versão 2</p>
     </div>
   );

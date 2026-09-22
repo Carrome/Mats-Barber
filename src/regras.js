@@ -2,7 +2,7 @@
    Regras de negócio
    ===================================================================== */
 import {
-  addDays, cap, ddmm, diffDias, fimMesYmd, fromMin, hojeYmd, inicioMes, momento, nomeMes, parse, r2, segundaDe, soma, toMin, ymd, PAGAMENTOS,
+  addDays, brl, cap, ddmm, diffDias, fimMesYmd, fromMin, hojeYmd, inicioMes, momento, nomeMes, parse, r2, segundaDe, soma, toMin, ymd, PAGAMENTOS,
 } from "./util.js";
 
 export const TIPOS_ATENDIMENTO = ["avulso", "pacote", "campanha"];
@@ -71,9 +71,34 @@ export const horariosDe = (cfg) =>
 export const diaFechado = (db, data) => (db.fechados || []).find((f) => f.data === data) || null;
 export const atendeNoDia = (db, data) => db.config.dias.includes(parse(data).getDay());
 
+// Pausa fixa de Ajustes que vale neste horário (as desligadas não contam)
 export function pausaEm(cfg, data, hora) {
   const dia = parse(data).getDay();
-  return (cfg.pausas || []).find((p) => p.dias?.includes(dia) && p.de && p.ate && hora >= p.de && hora < p.ate) || null;
+  return (cfg.pausas || []).find((p) => p.ativa !== false && p.dias?.includes(dia) && p.de && p.ate && hora >= p.de && hora < p.ate) || null;
+}
+
+/* ---------- horários de um dia ----------
+   Cada data pode ter a lista própria de horários e o almoço daquele dia
+   (db.gradeDia["AAAA-MM-DD"]). Sem isso, vale a grade padrão de Ajustes. */
+const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+export function gradeDoDia(db, data) {
+  const g = db.gradeDia?.[data];
+  if (!Array.isArray(g?.horas)) return horariosDe(db.config);
+  return [...new Set(g.horas.filter((h) => HORA.test(h)))].sort();
+}
+
+export function almocoDoDia(db, data) {
+  const a = db.gradeDia?.[data]?.almoco;
+  if (!a || !HORA.test(a.de || "") || !(Number(a.minutos) > 0)) return null;
+  return { motivo: "Almoço", de: a.de, ate: fromMin(Math.min(toMin(a.de) + Number(a.minutos), 23 * 60 + 59)), doDia: true };
+}
+
+// O que bloqueia um horário: o almoço marcado no dia ou uma pausa fixa ligada
+export function pausaDoDia(db, data, hora) {
+  const al = almocoDoDia(db, data);
+  if (al && hora >= al.de && hora < al.ate) return al;
+  return pausaEm(db.config, data, hora);
 }
 
 // Mapa "data hora" -> agendamento (o primeiro ganha; duplicados ficam na lista extra)
@@ -86,22 +111,23 @@ export function mapaAgenda(db) {
   return m;
 }
 
-// Horários exibidos num dia: grade + qualquer agendamento fora da grade (encaixes ou grade antiga)
-export function horasDoDia(db, data, grade = horariosDe(db.config)) {
+// Horários exibidos num dia: grade do dia + agendamentos fora dela (encaixes ou
+// grade antiga) + o início do almoço, para ele aparecer na agenda
+export function horasDoDia(db, data, grade = gradeDoDia(db, data)) {
   const extra = db.agendamentos.filter((a) => a.data === data && !grade.includes(a.hora)).map((a) => a.hora);
-  return [...new Set([...grade, ...extra])].sort();
+  const al = almocoDoDia(db, data);
+  return [...new Set([...grade, ...extra, ...(al ? [al.de] : [])])].sort();
 }
 
 export function vagasLivres(db, de, ate, agora = new Date()) {
-  const horas = horariosDe(db.config);
   const ocupado = new Set(db.agendamentos.map((a) => `${a.data} ${a.hora}`));
   const out = [];
   for (let d = parse(de); ymd(d) <= ate; d = addDays(d, 1)) {
     const data = ymd(d);
     if (!atendeNoDia(db, data) || diaFechado(db, data)) continue;
-    for (const hora of horas) {
+    for (const hora of gradeDoDia(db, data)) {
       if (momento(data, hora) <= agora) continue;
-      if (pausaEm(db.config, data, hora)) continue;
+      if (pausaDoDia(db, data, hora)) continue;
       if (!ocupado.has(`${data} ${hora}`)) out.push({ data, hora });
     }
   }
@@ -111,7 +137,7 @@ export function vagasLivres(db, de, ate, agora = new Date()) {
 // Horários livres num dia para remarcar / encaixar
 export function horasLivresNoDia(db, data, ignorarId, agora = new Date()) {
   const ocup = new Set(db.agendamentos.filter((a) => a.data === data && a.id !== ignorarId).map((a) => a.hora));
-  return horariosDe(db.config).filter((h) => !ocup.has(h) && !pausaEm(db.config, data, h) && momento(data, h) > agora);
+  return gradeDoDia(db, data).filter((h) => !ocup.has(h) && !pausaDoDia(db, data, h) && momento(data, h) > agora);
 }
 
 // Limites de um mês "AAAA-MM"
@@ -122,12 +148,11 @@ export function capacidadeMes(db, key) {
 }
 
 export function capacidadePeriodo(db, inicio, fim) {
-  const horas = horariosDe(db.config);
   let total = 0;
   for (let d = parse(inicio); ymd(d) <= fim; d = addDays(d, 1)) {
     const data = ymd(d);
     if (!atendeNoDia(db, data) || diaFechado(db, data)) continue;
-    total += horas.filter((h) => !pausaEm(db.config, data, h)).length;
+    total += gradeDoDia(db, data).filter((h) => !pausaDoDia(db, data, h)).length;
   }
   return total;
 }
@@ -160,15 +185,30 @@ export function valorAtendimento(db, a) {
   return p && Number(p.qtd) ? r2(p.valorPago / p.qtd) : 0;
 }
 
+// Serviços adicionais feitos no mesmo horário. São sempre pagos na hora, mesmo
+// quando o principal sai de um pacote ou de uma vaga Flex.
+export const adicionaisDe = (a) => (Array.isArray(a.adicionais) ? a.adicionais : []);
+export const valorAdicionais = (a) => r2(soma(adicionaisDe(a), (x) => Number(x.valor) || 0));
+export const nomeServicos = (db, a) =>
+  [a.servicoId, ...adicionaisDe(a).map((x) => x.servicoId)].map((id) => servicoDe(db, id)?.nome || "Serviço removido").join(" + ");
+
+const pagaPrincipal = (a) => a.tipo === "avulso" || a.tipo === "campanha";
+const pagoNaHora = (a) => r2((pagaPrincipal(a) ? Number(a.valor) || 0 : 0) + valorAdicionais(a));
+const pagaNaHora = (a) => pagaPrincipal(a) || (TIPOS_ATENDIMENTO.includes(a.tipo) && valorAdicionais(a) > 0);
+
 const concluidosNoPeriodo = (db, inicio, fim) =>
   db.agendamentos.filter((a) => a.status === "concluido" && TIPOS_ATENDIMENTO.includes(a.tipo) && noPeriodo(a.data, inicio, fim));
 
 export function vendasPorServico(db, inicio, fim) {
   const grupos = new Map();
+  const somar = (servicoId, valor) => {
+    const g = grupos.get(servicoId) || { id: servicoId, nome: servicoDe(db, servicoId)?.nome || "Serviço removido", valor: 0, qtd: 0 };
+    g.valor = r2(g.valor + valor); g.qtd++;
+    grupos.set(servicoId, g);
+  };
   for (const a of concluidosNoPeriodo(db, inicio, fim)) {
-    const g = grupos.get(a.servicoId) || { id: a.servicoId, nome: servicoDe(db, a.servicoId)?.nome || "Serviço removido", valor: 0, qtd: 0 };
-    g.valor = r2(g.valor + valorAtendimento(db, a)); g.qtd++;
-    grupos.set(a.servicoId, g);
+    somar(a.servicoId, valorAtendimento(db, a));
+    for (const x of adicionaisDe(a)) somar(x.servicoId, Number(x.valor) || 0);
   }
   return [...grupos.values()].sort((a, b) => b.valor - a.valor || b.qtd - a.qtd);
 }
@@ -185,10 +225,30 @@ export function comumFlex(db, inicio, fim) {
   const out = { comum: { valor: 0, qtd: 0 }, flex: { valor: 0, qtd: 0 } };
   for (const a of concluidosNoPeriodo(db, inicio, fim)) {
     const g = ehFlex(db, a) ? out.flex : out.comum;
-    g.valor = r2(g.valor + valorAtendimento(db, a)); g.qtd++;
+    g.valor = r2(g.valor + valorAtendimento(db, a) + valorAdicionais(a)); g.qtd++;
   }
   return out;
 }
+
+/* ---------- pagamento dividido ---------- */
+export const DIVIDIDO = "Dividido";
+
+// Quanto entrou em cada forma. No dividido só a parte em dinheiro é guardada e o
+// Pix é o resto: assim a soma continua fechando se o total mudar depois.
+export function partesPagamento(pagamento, emDinheiro, total) {
+  const t = r2(Number(total) || 0);
+  if (pagamento !== DIVIDIDO) return { [pagamento || "Não informado"]: t };
+  const d = r2(Math.min(t, Math.max(0, Number(emDinheiro) || 0)));
+  return { Dinheiro: d, Pix: r2(t - d) };
+}
+
+export function rotuloPagamento(pagamento, emDinheiro, total) {
+  if (pagamento !== DIVIDIDO) return pagamento || "";
+  const p = partesPagamento(pagamento, emDinheiro, total);
+  return `Dinheiro ${brl(p.Dinheiro)} + Pix ${brl(p.Pix)}`;
+}
+
+const somarPartes = (acc, partes) => { for (const [k, v] of Object.entries(partes)) acc[k] = r2((acc[k] || 0) + v); };
 
 /* ---------- faturamento ---------- */
 export function faturamentoMes(db, key) {
@@ -200,17 +260,20 @@ export function resumoPeriodo(db, inicio, fim) {
   const ags = db.agendamentos.filter((a) => noPeriodo(a.data, inicio, fim));
   const feitos = ags.filter((a) => a.status === "concluido");
   const pacotes = soma(pac, (p) => p.valorPago);
-  const servicos = soma(feitos.filter((a) => a.tipo === "avulso"), (a) => a.valor);
+  const atendidos = feitos.filter((a) => TIPOS_ATENDIMENTO.includes(a.tipo));
+  // adicionais entram como serviço, qualquer que seja o tipo do principal
+  const servicos = soma(feitos.filter((a) => a.tipo === "avulso"), (a) => a.valor) + soma(atendidos, valorAdicionais);
   const campanhas = soma(feitos.filter((a) => a.tipo === "campanha"), (a) => a.valor);
   const total = r2(pacotes + servicos + campanhas);
-  const previsto = soma(ags.filter((a) => a.status === "agendado" && (a.tipo === "avulso" || a.tipo === "campanha")), (a) => a.valor);
-  const atendimentos = feitos.filter((a) => TIPOS_ATENDIMENTO.includes(a.tipo)).length;
-  const pagantes = feitos.filter((a) => a.tipo === "avulso" || a.tipo === "campanha");
+  const marcados = ags.filter((a) => a.status === "agendado" && TIPOS_ATENDIMENTO.includes(a.tipo));
+  const previsto = soma(marcados.filter(pagaPrincipal), (a) => a.valor) + soma(marcados, valorAdicionais);
+  const atendimentos = atendidos.length;
+  const pagantes = feitos.filter(pagaNaHora);
   const faltas = ags.filter((a) => a.status === "faltou" && TIPOS_ATENDIMENTO.includes(a.tipo)).length;
   const porPagamento = {};
   [...PAGAMENTOS, "Não informado"].forEach((k) => { porPagamento[k] = 0; });
-  pac.forEach((p) => { const k = p.pagamento || "Não informado"; porPagamento[k] = r2((porPagamento[k] || 0) + p.valorPago); });
-  pagantes.forEach((a) => { const k = a.pagamento || "Não informado"; porPagamento[k] = r2((porPagamento[k] || 0) + a.valor); });
+  pac.forEach((p) => somarPartes(porPagamento, partesPagamento(p.pagamento, p.emDinheiro, p.valorPago)));
+  pagantes.forEach((a) => somarPartes(porPagamento, partesPagamento(a.pagamento, a.emDinheiro, pagoNaHora(a))));
   return {
     pacotes: r2(pacotes), servicos: r2(servicos), campanhas: r2(campanhas), total, previsto: r2(previsto), atendimentos, faltas,
     ticket: pagantes.length ? (servicos + campanhas) / pagantes.length : 0, qtdPacotes: pac.length, porPagamento,
@@ -218,12 +281,12 @@ export function resumoPeriodo(db, inicio, fim) {
 }
 
 export function recebidoNoDia(db, data) {
-  const feitos = db.agendamentos.filter((a) => a.data === data && a.status === "concluido" && (a.tipo === "avulso" || a.tipo === "campanha"));
+  const feitos = db.agendamentos.filter((a) => a.data === data && a.status === "concluido" && pagaNaHora(a));
   const pac = db.pacotes.filter((p) => !p.cancelado && p.dataCompra === data);
   const porPagamento = {};
-  feitos.forEach((a) => { const k = a.pagamento || "Não informado"; porPagamento[k] = r2((porPagamento[k] || 0) + a.valor); });
-  pac.forEach((p) => { const k = p.pagamento || "Não informado"; porPagamento[k] = r2((porPagamento[k] || 0) + p.valorPago); });
-  return { total: r2(soma(feitos, (a) => a.valor) + soma(pac, (p) => p.valorPago)), porPagamento };
+  feitos.forEach((a) => somarPartes(porPagamento, partesPagamento(a.pagamento, a.emDinheiro, pagoNaHora(a))));
+  pac.forEach((p) => somarPartes(porPagamento, partesPagamento(p.pagamento, p.emDinheiro, p.valorPago)));
+  return { total: r2(soma(feitos, pagoNaHora) + soma(pac, (p) => p.valorPago)), porPagamento };
 }
 
 /* ---------- meta ---------- */

@@ -166,7 +166,11 @@ const carregarImagem = (src) => new Promise((ok) => {
   img.src = src;
 });
 
-export async function desenharStory(db, data, lista) {
+// mais que isso os cartões ficam pequenos demais para ler no celular
+export const MAX_STORY = 6;
+
+// `todos` são as ofertas do dia inteiro: o título sai delas, então não muda com a escolha
+export async function desenharStory(db, data, lista, todos = lista) {
   const W = 1080, H = 1920;
   const cv = document.createElement("canvas");
   cv.width = W; cv.height = H;
@@ -206,15 +210,15 @@ export async function desenharStory(db, data, lista) {
     while (g.measureText(txt).width > W - 120 && tam > 20) { tam -= 4; g.font = font.replace(/\d+px/, `${tam}px`); }
     g.fillStyle = cor; g.textAlign = "center"; g.fillText(txt, W / 2, y);
   };
-  const camps = [...new Set(lista.map((a) => campanhaDe(db, a.campanhaId)?.nome).filter(Boolean))];
+  const camps = [...new Set(todos.map((a) => campanhaDe(db, a.campanhaId)?.nome).filter(Boolean))];
   centro((db.config.nome || "").toUpperCase(), 190, `600 44px ${TEXTO}`, "#F3E8CD");
   centro((camps[0] || "HORÁRIO COM DESCONTO").toUpperCase(), 330, `800 150px ${DISPLAY}`, "#FFFFFF");
   const hoje = hojeYmd();
   const quando = data === hoje ? "HOJE" : data === ymd(addDays(new Date(), 1)) ? "AMANHÃ" : DIAS_LONGO[parse(data).getDay()].toUpperCase();
   centro(`${quando} · ${ddmm(data)}`, 440, `700 84px ${DISPLAY}`, "#FFF406");
 
-  const itens = lista.slice(0, 8);
-  const alt = itens.length > 6 ? 125 : itens.length > 4 ? 150 : 190, gap = 26;
+  const itens = lista.slice(0, MAX_STORY);
+  const alt = itens.length > 4 ? 150 : 190, gap = 26;
   const bloco = itens.length * alt + (itens.length - 1) * gap;
   const topo = Math.max(520, Math.round(520 + (H - 360 - 520 - bloco) / 2));
   itens.forEach((a, i) => {
@@ -239,7 +243,6 @@ export async function desenharStory(db, data, lista) {
     g.fillStyle = "#141414"; g.font = `800 ${alt * 0.4}px ${DISPLAY}`;
     g.fillText(brl(a.valor), x + w - 40, y + alt * 0.8);
   });
-  if (lista.length > itens.length) centro(`+ ${lista.length - itens.length} horário(s)`, topo + itens.length * (alt + gap) + 40, `600 40px ${TEXTO}`, "#F3E8CD");
 
   centro("CHAMA NO WHATSAPP", H - 250, `800 96px ${DISPLAY}`, "#FFFFFF");
   centro("e garanta o seu antes que acabe", H - 180, `500 44px ${TEXTO}`, "#F3E8CD");
@@ -247,23 +250,44 @@ export async function desenharStory(db, data, lista) {
   return new Promise((ok) => cv.toBlob((b) => ok(b), "image/png"));
 }
 
-function StorySheet({ db, notify, data, lista, onClose }) {
+export function StorySheet({ db, notify, data, lista, onClose }) {
   const [blob, setBlob] = useState(null);
   const [url, setUrl] = useState("");
+  // começa sem nenhum: ele marca um por um os que quer na imagem, até o limite
+  const [ids, setIds] = useState([]);
+  const escolhidos = useMemo(() => lista.filter((a) => ids.includes(a.id)), [lista, ids]);
+  const cheio = ids.length >= MAX_STORY;
+  const alternar = (id) => setIds((xs) => (xs.includes(id) ? xs.filter((x) => x !== id) : xs.length >= MAX_STORY ? xs : [...xs, id]));
   useEffect(() => {
     let vivo = true, u = "";
-    desenharStory(db, data, lista).then((b) => {
+    desenharStory(db, data, escolhidos, lista).then((b) => {
       if (!vivo || !b) return;
       u = URL.createObjectURL(b);
       setBlob(b); setUrl(u);
     });
     return () => { vivo = false; if (u) URL.revokeObjectURL(u); };
-  }, [db, data, lista]);
-  const nome = `vagas-${data}.png`;
+  }, [db, data, escolhidos]);
+  const nome = `vagas-${data}${escolhidos[0] ? "-" + escolhidos[0].hora.replace(":", "h") : ""}.png`;
   return (
-    <Sheet titulo="Imagem para stories" sub={`${plural(lista.length, "horário", "horários")} de ${dataLonga(data).toLowerCase()}`} onClose={onClose}>
+    <Sheet titulo="Imagem para stories" sub={`${plural(escolhidos.length, "horário", "horários")} de ${dataLonga(data).toLowerCase()}`} onClose={onClose}>
       <div className="mf-stack">
-        {url ? <img className="mf-img" src={url} alt="Prévia da imagem para stories" /> : <p className="sub" style={{ textAlign: "center" }}>Gerando imagem…</p>}
+        {lista.length > 0 && (
+          <div>
+            <small className="mf-muted">Escolha os horários da imagem ({escolhidos.length} de até {MAX_STORY})</small>
+            <div className="mf-chips quebra" style={{ marginTop: 6 }}>
+              {lista.map((a) => {
+                const on = ids.includes(a.id);
+                return (
+                  <button key={a.id} type="button" className={"mf-chip" + (on ? " on" : "")} aria-pressed={on} disabled={!on && cheio} onClick={() => alternar(a.id)}>
+                    {a.hora}
+                  </button>
+                );
+              })}
+            </div>
+            {cheio && lista.length > MAX_STORY && <small className="mf-muted">Até {MAX_STORY} por imagem, para ficar legível. Tire um para trocar, ou faça outra imagem com os demais.</small>}
+          </div>
+        )}
+        {url ?<img className="mf-img" src={url} alt="Prévia da imagem para stories" /> : <p className="sub" style={{ textAlign: "center" }}>Gerando imagem…</p>}
         <div className="mf-row">
           <button className="mf-btn mf-grow" disabled={!blob} onClick={async () => {
             const r = await entregarArquivo(nome, blob, "Vagas com desconto");

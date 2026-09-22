@@ -3,12 +3,12 @@
    ===================================================================== */
 import React, { useState } from "react";
 import { CalendarPlus, MessageCircle, Pencil, Plus, Ticket } from "lucide-react";
-import { brl, ddmm, ddmmaa, hojeYmd, PAGAMENTOS, plural, primeiroNome, r2, soma, uid, whats, addDays, parse, ymd } from "../util.js";
+import { brl, ddmm, ddmmaa, hojeYmd, plural, primeiroNome, r2, soma, uid, whats, addDays, parse, ymd } from "../util.js";
 import {
-  campanhaVale, clienteDe, infoPacote, precoCampanha, precoPlano, rotuloDesconto, servicoDe, TOM_STATUS, venceEm,
+  campanhaVale, clienteDe, infoPacote, precoCampanha, precoPlano, rotuloDesconto, rotuloPagamento, servicoDe, TOM_STATUS, venceEm,
 } from "../regras.js";
 import { montarPacote } from "../dados.js";
-import { BarraSaldo, Campo, ClientePicker, NumInput, Seg, Sheet, Tag } from "../componentes.jsx";
+import { BarraSaldo, Campo, ClientePicker, FormaPagamento, NumInput, Seg, Sheet, Tag } from "../componentes.jsx";
 
 export function Planos({ db, update, notify, ask, abrir, sub, setSub }) {
   const [plano, setPlano] = useState(null);
@@ -269,6 +269,7 @@ export function VendaForm({ db, update, notify, clienteInicial, onClose }) {
   const [planoId, setPlanoId] = useState(ativos[0]?.id);
   const [data, setData] = useState(hojeYmd());
   const [pag, setPag] = useState(db.config.pagamentoPadrao || "Pix");
+  const [emDinheiro, setEmDinheiro] = useState(0);
   const plano = db.planos.find((p) => p.id === planoId);
   const [feito, setFeito] = useState(null);
   if (feito) {
@@ -306,10 +307,11 @@ export function VendaForm({ db, update, notify, clienteInicial, onClose }) {
         </Campo>
         <div className="mf-grid mf-g2">
           <Campo label="Data da compra"><input className="mf-input" type="date" value={data} onChange={(e) => setData(e.target.value)} /></Campo>
-          <Campo label="Pagamento">
-            <select className="mf-input" value={pag} onChange={(e) => setPag(e.target.value)}>{PAGAMENTOS.map((p) => <option key={p}>{p}</option>)}</select>
-          </Campo>
         </div>
+        <Campo label="Pagamento">
+          <FormaPagamento pagamento={pag} emDinheiro={emDinheiro} total={plano ? precoPlano(db, plano) : 0}
+            onChange={({ pagamento, emDinheiro: v }) => { setPag(pagamento); setEmDinheiro(v); }} />
+        </Campo>
         {plano && data && (
           <div className="mf-panel mf-row mf-between" style={{ padding: 12 }}>
             <span className="sub">Vence em {ddmmaa(ymd(addDays(parse(data), plano.validadeDias)))}</span>
@@ -317,7 +319,7 @@ export function VendaForm({ db, update, notify, clienteInicial, onClose }) {
           </div>
         )}
         <button className="mf-btn latao full" disabled={!clienteId || !plano || !data} onClick={() => {
-          const novo = montarPacote(db, { clienteId, planoId, dataCompra: data, pagamento: pag });
+          const novo = montarPacote(db, { clienteId, planoId, dataCompra: data, pagamento: pag, emDinheiro });
           update((d) => { d.pacotes.push(novo); return d; });
           setFeito(novo);
           notify("Venda registrada");
@@ -343,7 +345,7 @@ export function PacoteDetalhe({ db, update, notify, ask, abrir, pacote, onClose 
         <BarraSaldo qtd={pacote.qtd} usados={i.usados} reservados={i.reservados} />
         <div className="mf-panel mf-ledger">
           <div><span>Cliente</span>{c ? <button className="mf-link" onClick={() => abrir.cliente(c.id)}>{c.nome}</button> : <span>—</span>}</div>
-          <div><span>Comprado em</span><span>{ddmmaa(pacote.dataCompra)} ({pacote.pagamento || "pagamento não informado"})</span></div>
+          <div><span>Comprado em</span><span>{ddmmaa(pacote.dataCompra)} ({rotuloPagamento(pacote.pagamento, pacote.emDinheiro, pacote.valorPago) || "pagamento não informado"})</span></div>
           <div><span>Vence em</span><span>{ddmmaa(i.vence)}{i.dias >= 0 ? ` (${i.dias} dias)` : ""}{pacote.extraDias ? ` · +${pacote.extraDias}d de cortesia` : ""}</span></div>
           <div><span>Usados</span><b>{i.usados}</b></div>
           <div><span>Marcados</span><b>{i.reservados}</b></div>

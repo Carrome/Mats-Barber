@@ -87,10 +87,11 @@ describe("botão de esconder valores na barra superior", () => {
 
 describe("aviso de backup", () => {
   async function abrirComDadosReaisSemBackup() {
-    const { baseVazia, STORE_KEY } = await import("./dados.js");
+    const { baseVazia, MODO_KEY, STORE_KEY } = await import("./dados.js");
     const db = baseVazia();
     db.clientes = [{ id: "c1", nome: "Ana" }, { id: "c2", nome: "Bia" }, { id: "c3", nome: "Caio" }];
     localStorage.setItem(STORE_KEY, JSON.stringify(db));
+    localStorage.setItem(MODO_KEY, "real"); // aparelho que já passou pela separação do modo teste
     return render(<App />);
   }
 
@@ -135,10 +136,11 @@ describe("portão de login e carga inicial", () => {
   });
 
   it("com sessão e dados reais no aparelho, abre o app mesmo se a leitura do banco falhar", async () => {
-    const { baseVazia, STORE_KEY } = await import("./dados.js");
+    const { baseVazia, MODO_KEY, STORE_KEY } = await import("./dados.js");
     const db = baseVazia();
     db.clientes = [{ id: "c1", nome: "Ana" }];
     localStorage.setItem(STORE_KEY, JSON.stringify(db));
+    localStorage.setItem(MODO_KEY, "real"); // aparelho que já passou pela separação do modo teste
     // sessaoAtual e lerNuvem seguem o padrão do beforeEach: sessão presente, leitura com erro de rede.
     render(<App />);
     await waitFor(() => expect(screen.getByRole("banner")).toBeTruthy());
@@ -147,13 +149,69 @@ describe("portão de login e carga inicial", () => {
     expect(criarNuvem).not.toHaveBeenCalled();
   });
 
-  it("com dados de exemplo ainda não resolvidos, não fala com o banco (trava contra apagar dados reais)", async () => {
-    // localStorage vazio: abrirDados gera os dados de exemplo (demo:true) e o
-    // aviso "Começar do zero / Continuar com eles" ainda não foi respondido.
+  it("no modo teste nunca fala com o banco", async () => {
+    const { MODO_KEY } = await import("./dados.js");
+    localStorage.setItem(MODO_KEY, "teste");
     render(<App />);
-    await waitFor(() => expect(screen.getByText(/dados de exemplo/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/Modo teste./)).toBeTruthy());
     await new Promise((r) => setTimeout(r, 0)); // dá chance a qualquer efeito pendente rodar
     expect(lerNuvem).not.toHaveBeenCalled();
     expect(criarNuvem).not.toHaveBeenCalled();
+  });
+});
+
+describe("modo teste", () => {
+  const ler = async (qual) => {
+    const { STORE_KEY, TESTE_KEY } = await import("./dados.js");
+    const raw = localStorage.getItem(qual === "teste" ? TESTE_KEY : STORE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  };
+
+  it("entra e sai do teste sem misturar nem perder nada dos dois lados", async () => {
+    const { baseVazia, MODO_KEY, STORE_KEY } = await import("./dados.js");
+    const real = baseVazia();
+    real.clientes = [{ id: "c1", nome: "Ana, cliente de verdade" }];
+    localStorage.setItem(STORE_KEY, JSON.stringify(real));
+    localStorage.setItem(MODO_KEY, "real");
+    render(<App />);
+    const barra = await screen.findByRole("banner");
+
+    fireEvent.click(within(barra).getByRole("button", { name: /^Ajustes/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Testar aplicativo" }));
+    await waitFor(() => expect(screen.getByText(/Modo teste\./)).toBeTruthy());
+    const teste = await ler("teste");
+    expect(teste.teste).toBe(true);
+    expect(teste.clientes.length).toBeGreaterThan(10);
+    expect((await ler("real")).clientes.map((c) => c.nome)).toEqual(["Ana, cliente de verdade"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Voltar ao uso real" }));
+    await waitFor(() => expect(screen.queryByText(/Modo teste\./)).toBe(null));
+    expect((await ler("real")).clientes.map((c) => c.nome)).toEqual(["Ana, cliente de verdade"]);
+    expect(localStorage.getItem(MODO_KEY)).toBe("real");
+
+    // voltando ao teste, o que estava lá continua igual (não é gerado de novo)
+    fireEvent.click(within(barra).getByRole("button", { name: /^Ajustes/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Testar aplicativo" }));
+    await waitFor(() => expect(screen.getByText(/Modo teste\./)).toBeTruthy());
+    expect((await ler("teste")).clientes.map((c) => c.id)).toEqual(teste.clientes.map((c) => c.id));
+  });
+
+  it("o modo escolhido fica lembrado ao abrir o app de novo", async () => {
+    render(<App />);
+    fireEvent.click(within(await screen.findByRole("banner")).getByRole("button", { name: /^Ajustes/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Testar aplicativo" }));
+    await waitFor(() => expect(screen.getByText(/Modo teste\./)).toBeTruthy());
+    cleanup();
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/Modo teste\./)).toBeTruthy());
+  });
+
+  it("no teste não há backup nem restauração, para não trazer dado real para cá", async () => {
+    const { MODO_KEY } = await import("./dados.js");
+    localStorage.setItem(MODO_KEY, "teste");
+    render(<App />);
+    fireEvent.click(within(await screen.findByRole("banner")).getByRole("button", { name: /^Ajustes/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Recomeçar o exemplo/ })).toBeTruthy());
+    expect(screen.queryByRole("button", { name: /Restaurar backup/ })).toBe(null);
   });
 });

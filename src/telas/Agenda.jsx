@@ -4,17 +4,23 @@
    ===================================================================== */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, CalendarClock, CalendarX, Check, ChevronLeft, ChevronRight, Clock, Coffee, MessageCircle, Plus, Repeat,
+  AlertTriangle, CalendarClock, CalendarX, Check, ChevronLeft, ChevronRight, Clock, Coffee, MessageCircle, Plus, Repeat, X,
 } from "lucide-react";
 import {
   addDays, brl, cap, dataLonga, DIAS_CURTO, DIAS_LONGO, ddmm, diasDaSemana, horaValida, hojeYmd, inicioMes, momento,
-  nomeMes, PAGAMENTOS, parse, primeiroNome, r2, segundaDe, semanasDoMes, uid, whats, ymd, iniciais, plural,
+  nomeMes, PAGAMENTOS, parse, primeiroNome, r2, segundaDe, semanasDoMes, soma, uid, whats, ymd, iniciais, plural,
 } from "../util.js";
 import {
-  atendeNoDia, campanhaDe, campanhaVale, clienteDe, diaFechado, horariosDe, horasDoDia, horasLivresNoDia, mapaAgenda,
-  pacoteDe, pacotesUsaveis, pausaEm, pendentes, precoCampanha, rotuloDesconto, servicoDe, TIPOS_ATENDIMENTO,
+  adicionaisDe, atendeNoDia, campanhaDe, campanhaVale, clienteDe, diaFechado, DIVIDIDO, gradeDoDia, horasDoDia, horasLivresNoDia, mapaAgenda, nomeServicos,
+  pacoteDe, pacotesUsaveis, pausaDoDia, pendentes, precoCampanha, rotuloDesconto, servicoDe, TIPOS_ATENDIMENTO, valorAdicionais,
 } from "../regras.js";
-import { BarraSaldo, Campo, ClientePicker, NumInput, Seg, Sheet, Tag, TextoBlur, useAgora, useLargo } from "../componentes.jsx";
+import { BarraSaldo, Campo, ClientePicker, FormaPagamento, NumInput, Seg, Sheet, Tag, TextoBlur, useAgora, useLargo, ValoresDivididos } from "../componentes.jsx";
+
+const nomeServico = (db, id) => servicoDe(db, id)?.nome || "Serviço removido";
+const nomesAdicionais = (db, a) => adicionaisDe(a).map((x) => ` + ${nomeServico(db, x.servicoId)}`).join("");
+// Paga algo na hora: o principal, se não saiu de pacote, ou algum adicional
+const pagaAgora = (a) => a.tipo !== "pacote" || valorAdicionais(a) > 0;
+const totalNaHora = (a) => r2((a.tipo === "pacote" ? 0 : Number(a.valor) || 0) + valorAdicionais(a));
 
 const indiceSemana = (ref, dias, data) => {
   const i = semanasDoMes(ref, dias).findIndex((m) => ymd(m) === ymd(segundaDe(data)));
@@ -41,11 +47,11 @@ function Slot({ db, ag, hora, pausa, passado, foraGrade, onClick }) {
   }
   const cli = ag.clienteId && clienteDe(db, ag.clienteId);
   const camp = ag.campanhaId && campanhaDe(db, ag.campanhaId);
-  let cls = ag.tipo, t = cli?.nome || "Cliente", s = servicoDe(db, ag.servicoId)?.nome;
+  let cls = ag.tipo, t = cli?.nome || "Cliente", s = nomeServicos(db, ag);
   if (ag.tipo === "oferta") { t = passado ? "Não vendida" : camp?.nome || "Oferta"; s = brl(ag.valor); if (passado) cls += " encerrada"; }
   if (ag.tipo === "bloqueio") { t = ag.obs || "Bloqueado"; s = ""; }
-  if (ag.tipo === "pacote") s = `${pacoteDe(db, ag.pacoteId)?.codigo || "Pacote"}${ag.deOferta ? " · Flex" : ""}`;
-  if (ag.tipo === "campanha") s = camp?.nome;
+  if (ag.tipo === "pacote") s = `${pacoteDe(db, ag.pacoteId)?.codigo || "Pacote"}${ag.deOferta ? " · Flex" : ""}${nomesAdicionais(db, ag)}`;
+  if (ag.tipo === "campanha") s = `${camp?.nome || ""}${nomesAdicionais(db, ag)}`;
   const pendente = passado && ag.status === "agendado" && TIPOS_ATENDIMENTO.includes(ag.tipo);
   if (ag.status === "concluido") cls += " feito";
   if (ag.status === "faltou") { cls += " faltou"; s = "Faltou"; }
@@ -78,7 +84,6 @@ export function Agenda({ db, update, notify, ask, abrir, dataInicial }) {
   const idx = Math.max(0, Math.min(semIdx, semanas.length - 1));
   const dias = semanas.length ? diasDaSemana(semanas[idx], db.config.dias) : [];
   const diaAtivo = dias.find((d) => ymd(d) === diaSel) ? diaSel : dias[0] && ymd(dias[0]);
-  const grade = horariosDe(db.config);
   const mapa = useMemo(() => mapaAgenda(db), [db]);
   const hoje = hojeYmd();
   const rolou = useRef(false);
@@ -120,9 +125,10 @@ export function Agenda({ db, update, notify, ask, abrir, dataInicial }) {
     lista.forEach((d) => {
       const s = ymd(d);
       const fechado = diaFechado(db, s);
+      const grade = gradeDoDia(db, s);
       horasDoDia(db, s, grade).forEach((h) => {
         const a = mapa.get(`${s} ${h}`);
-        if (!a) { if (!fechado && grade.includes(h) && !pausaEm(db.config, s, h)) lv++; }
+        if (!a) { if (!fechado && grade.includes(h) && !pausaDoDia(db, s, h)) lv++; }
         else if (a.tipo === "oferta") { of++; lv++; }
         else if (a.tipo !== "bloqueio") at++;
       });
@@ -206,18 +212,19 @@ export function Agenda({ db, update, notify, ask, abrir, dataInicial }) {
           const s = ymd(d);
           const r = resumo([d]);
           const fechado = diaFechado(db, s);
+          const grade = gradeDoDia(db, s);
           const horas = horasDoDia(db, s, grade).filter((h) => !fechado || mapa.get(`${s} ${h}`));
           const proxima = s === hoje ? horas.find((h) => momento(s, h) > agora) : null;
           return (
             <div key={s} className="mf-col">
               <div className={"mf-colhead" + (s === hoje ? " hoje" : "") + (d.getMonth() !== ref.getMonth() ? " fora" : "")}>
                 <b>{largo ? DIAS_CURTO[d.getDay()] : DIAS_LONGO[d.getDay()]} {ddmm(s)}</b>
-                <small>{plural(r.at, "marcado", "marcados")} · <button className="mf-link" style={{ padding: 0, fontSize: 12 }} onClick={() => setDiaAberto(s)}>opções do dia</button></small>
+                <small>{plural(r.at, "marcado", "marcados")}{db.gradeDia?.[s] ? " · horários do dia" : ""} · <button className="mf-link" style={{ padding: 0, fontSize: 12 }} onClick={() => setDiaAberto(s)}>opções do dia</button></small>
               </div>
               {fechado && <div className="mf-fechado"><CalendarX size={15} style={{ verticalAlign: -3 }} /> Fechado: {fechado.motivo || "sem motivo"}</div>}
               {horas.map((h) => (
                 <div key={h} data-proximo={h === proxima ? "1" : undefined}>
-                  <Slot db={db} hora={h} ag={mapa.get(`${s} ${h}`)} pausa={pausaEm(db.config, s, h)} passado={momento(s, h) < agora}
+                  <Slot db={db} hora={h} ag={mapa.get(`${s} ${h}`)} pausa={pausaDoDia(db, s, h)} passado={momento(s, h) < agora}
                     foraGrade={!grade.includes(h)} onClick={() => setSlot({ data: s, hora: h })} />
                 </div>
               ))}
@@ -241,7 +248,7 @@ export function Agenda({ db, update, notify, ask, abrir, dataInicial }) {
    --------------------------------------------------------------------- */
 export function SlotSheet({ db, update, notify, ask, abrir, data, hora, onClose }) {
   const ag = db.agendamentos.find((a) => a.data === data && a.hora === hora);
-  const pausa = !ag && pausaEm(db.config, data, hora);
+  const pausa = !ag && pausaDoDia(db, data, hora);
   const fechado = diaFechado(db, data);
   const [mesmoAssim, setMesmoAssim] = useState(false);
   const titulo = `${dataLonga(data)} às ${hora}`;
@@ -254,7 +261,7 @@ export function SlotSheet({ db, update, notify, ask, abrir, data, hora, onClose 
           {fechado ? <CalendarX size={22} /> : <Coffee size={22} />}
           <div className="mf-grow">
             <b>{fechado ? `Dia fechado: ${fechado.motivo || "sem motivo"}` : pausa.motivo || "Pausa"}</b>
-            <p className="sub">{fechado ? "Reabra o dia em “opções do dia”." : `Pausa fixa de ${pausa.de} a ${pausa.ate}. Para mudar, vá em Ajustes > Pausas.`}</p>
+            <p className="sub">{fechado ? "Reabra o dia em “opções do dia”." : pausa.doDia ? `Almoço de ${pausa.de} a ${pausa.ate}. Para mudar, abra “opções do dia”.` : `Pausa fixa de ${pausa.de} a ${pausa.ate}. Para mudar, vá em Ajustes > Pausas.`}</p>
           </div>
         </div>
         <button className="mf-btn alt full" onClick={() => setMesmoAssim(true)}>Atender neste horário mesmo assim</button>
@@ -262,6 +269,36 @@ export function SlotSheet({ db, update, notify, ask, abrir, data, hora, onClose 
     );
   } else corpo = <NovoNoHorario db={db} update={update} notify={notify} data={data} hora={hora} onClose={onClose} />;
   return <Sheet titulo={titulo} onClose={onClose}>{corpo}</Sheet>;
+}
+
+/* ---------------------------------------------------------------------
+   Serviços adicionais no mesmo horário (cabelo + barba, por exemplo).
+   Entram pelo preço da tabela e ficam congelados, como o resto.
+   --------------------------------------------------------------------- */
+function Adicionais({ db, lista, onChange }) {
+  return (
+    <Campo label="Serviços adicionais">
+      <div className="mf-stack" style={{ gap: 6 }}>
+        {lista.map((x, i) => (
+          <div key={i} className="mf-row mf-between">
+            <span>{nomeServico(db, x.servicoId)}</span>
+            <span className="mf-row" style={{ gap: 4 }}>
+              {brl(x.valor)}
+              <button type="button" className="mf-iconbtn" aria-label={`Remover ${nomeServico(db, x.servicoId)}`}
+                onClick={() => onChange(lista.filter((_, j) => j !== i))}><X size={16} /></button>
+            </span>
+          </div>
+        ))}
+        <select className="mf-input" value="" aria-label="Adicionar serviço" onChange={(e) => {
+          const s = servicoDe(db, e.target.value);
+          if (s) onChange([...lista, { servicoId: s.id, valor: r2(s.preco) }]);
+        }}>
+          <option value="">+ adicionar serviço</option>
+          {db.servicos.map((s) => <option key={s.id} value={s.id}>{s.nome} ({brl(s.preco)})</option>)}
+        </select>
+      </div>
+    </Campo>
+  );
 }
 
 /* ---------------------------------------------------------------------
@@ -280,6 +317,7 @@ function NovoNoHorario({ db, update, notify, data, hora, onClose }) {
   const [valorManual, setValorManual] = useState(null);
   const [repetir, setRepetir] = useState(0);
   const [vezes, setVezes] = useState(2);
+  const [adicionais, setAdicionais] = useState([]);
   const serv = servicoDe(db, servicoId);
   const passado = momento(data, hora) < new Date();
 
@@ -299,7 +337,7 @@ function NovoNoHorario({ db, update, notify, data, hora, onClose }) {
 
   const salvarAg = () => {
     if (db.agendamentos.some((a) => a.data === data && a.hora === hora)) { notify("Este horário acabou de ser ocupado"); onClose(); return; }
-    const base = { id: uid(), data, hora, status: "agendado", pagamento: "", obs: "", criadoEm: new Date().toISOString() };
+    const base = { id: uid(), data, hora, status: "agendado", pagamento: "", obs: "", criadoEm: new Date().toISOString(), adicionais: modo === "agendar" ? adicionais : [] };
     let novo;
     if (modo === "bloquear") novo = { ...base, tipo: "bloqueio", valor: 0, obs: motivo || "Bloqueado" };
     else if (modo === "ofertar") novo = { ...base, tipo: "oferta", campanhaId: campVaga, servicoId, valor };
@@ -315,9 +353,10 @@ function NovoNoHorario({ db, update, notify, data, hora, onClose }) {
     if (modo === "agendar" && forma !== "pacote" && repetir > 0) {
       for (let i = 1; i <= vezes; i++) {
         const d2 = ymd(addDays(parse(data), repetir * i));
-        const livre = atendeNoDia(db, d2) && !diaFechado(db, d2) && !pausaEm(db.config, d2, hora) && !db.agendamentos.some((a) => a.data === d2 && a.hora === hora);
+        const livre = atendeNoDia(db, d2) && !diaFechado(db, d2) && !pausaDoDia(db, d2, hora) && !db.agendamentos.some((a) => a.data === d2 && a.hora === hora);
         const campOk = forma !== "campanha" || campanhaVale(campS, d2);
-        if (livre && campOk) extras.push({ ...novo, id: uid(), data: d2 });
+        // cópia própria da lista: cada repetição edita os adicionais sem mexer nas outras
+        if (livre && campOk) extras.push({ ...novo, id: uid(), data: d2, adicionais: novo.adicionais.map((x) => ({ ...x })) });
         else pulados++;
       }
     }
@@ -373,6 +412,7 @@ function NovoNoHorario({ db, update, notify, data, hora, onClose }) {
             )}
           </Campo>
         )}
+        <Adicionais db={db} lista={adicionais} onChange={setAdicionais} />
         {forma !== "pacote" && (
           <Campo label="Repetir este horário" dica={repetir ? "Datas ocupadas, fechadas ou fora do atendimento são puladas." : undefined}>
             <div className="mf-row mf-wrapr">
@@ -420,6 +460,12 @@ function NovoNoHorario({ db, update, notify, data, hora, onClose }) {
             valorManual === null
               ? <button type="button" className="mf-link" style={{ fontSize: 13 }} onClick={() => setValorManual(valor)}>Ajustar valor</button>
               : <div className="mf-row" style={{ marginTop: 8 }}><span className="sub">R$</span><NumInput value={valorManual} onChange={setValorManual} min={0} style={{ maxWidth: 120 }} aria-label="Valor" /><button type="button" className="mf-link" onClick={() => setValorManual(null)}>Voltar ao preço</button></div>
+          )}
+          {modo === "agendar" && adicionais.length > 0 && (
+            <div className="mf-row mf-between" style={{ marginTop: 8 }}>
+              <span className="sub">{forma === "pacote" ? "A pagar na hora" : "Total"}</span>
+              <b>{brl(r2((forma === "pacote" ? 0 : valor) + soma(adicionais, (x) => x.valor)))}</b>
+            </div>
           )}
         </div>
       )}
@@ -505,6 +551,9 @@ function DetalheAgendamento({ db, update, notify, ask, abrir, ag, onClose }) {
   const editavel = ag.tipo !== "pacote";
   const passou = momento(ag.data, ag.hora) < new Date();
   const infoPac = pac && db.pacotes.length ? pac : null;
+  const adic = adicionaisDe(ag);
+  // horário de pacote não cobra o principal, mas cobra o adicional
+  const cobra = editavel || adic.length > 0;
   return (
     <div className="mf-stack">
       <div className="mf-panel">
@@ -537,19 +586,19 @@ function DetalheAgendamento({ db, update, notify, ask, abrir, ag, onClose }) {
             <span>Valor</span>
             {editavel ? <span className="mf-row" style={{ gap: 6 }}><small>R$</small><NumInput style={{ maxWidth: 110, padding: "6px 10px" }} value={ag.valor} min={0} onChange={(v) => mudar({ valor: r2(v) })} aria-label="Valor" /></span> : <b>Já pago</b>}
           </div>
+          {adic.length > 0 && <div><span>Total</span><b>{brl(totalNaHora(ag))}</b></div>}
         </div>
+        <Adicionais db={db} lista={adic} onChange={(lista) => mudar({ adicionais: lista })} />
         {infoPac && <BarraSaldo qtd={pac.qtd} usados={db.agendamentos.filter((a) => a.pacoteId === pac.id && a.tipo === "pacote" && a.status !== "agendado").length} reservados={db.agendamentos.filter((a) => a.pacoteId === pac.id && a.tipo === "pacote" && a.status === "agendado").length} />}
       </div>
       <Campo label="Situação">
-        <Seg valor={ag.status} onChange={(s) => mudar({ status: s, pagamento: s === "concluido" && editavel && !ag.pagamento ? cfg.pagamentoPadrao || "" : ag.pagamento })}
+        <Seg valor={ag.status} onChange={(s) => mudar({ status: s, pagamento: s === "concluido" && cobra && !ag.pagamento ? cfg.pagamentoPadrao || "" : ag.pagamento })}
           opcoes={[["agendado", "Agendado"], ["concluido", "Concluído"], ["faltou", "Faltou"]]} />
       </Campo>
       {passou && ag.status === "agendado" && <small style={{ color: "var(--latao-tx)" }}>O horário já passou. Marque se foi concluído ou se o cliente faltou.</small>}
-      {editavel && ag.status === "concluido" && (
+      {cobra && ag.status === "concluido" && (
         <Campo label="Pagamento">
-          <div className="mf-quick">
-            {PAGAMENTOS.map((p) => <button type="button" key={p} className={ag.pagamento === p ? "on" : ""} onClick={() => mudar({ pagamento: p })}>{p}</button>)}
-          </div>
+          <FormaPagamento pagamento={ag.pagamento} emDinheiro={ag.emDinheiro} total={totalNaHora(ag)} onChange={mudar} />
         </Campo>
       )}
       {ag.tipo === "pacote" && ag.status === "faltou" && <small>Falta em horário de pacote conta como corte usado.</small>}
@@ -564,7 +613,7 @@ function DetalheAgendamento({ db, update, notify, ask, abrir, ag, onClose }) {
           ask(`Desfazer a venda da vaga para ${cli?.nome || "cliente"} (${ddmm(ag.data)} às ${ag.hora})? O horário volta a ser oferta.${aviso}`, () => {
             update((d) => {
               const a = d.agendamentos.find((x) => x.id === ag.id);
-              if (a) Object.assign(a, { tipo: "oferta", clienteId: null, pacoteId: null, status: "agendado", deOferta: false, pagamento: "", valor: ag.valorOferta ?? ag.valor, servicoId: ag.servicoId });
+              if (a) Object.assign(a, { tipo: "oferta", clienteId: null, pacoteId: null, status: "agendado", deOferta: false, pagamento: "", valor: ag.valorOferta ?? ag.valor, servicoId: ag.servicoId, adicionais: [] });
               return d;
             }, true);
             notify("Venda desfeita, vaga voltou para oferta", true);
@@ -620,6 +669,66 @@ function Remarcar({ db, update, notify, ag, onVoltar, onClose }) {
 /* ---------------------------------------------------------------------
    Opções do dia: lembretes, encaixe, fechar/reabrir
    --------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------
+   Horários só desta data. Começa pela grade padrão de Ajustes; qualquer
+   horário pode sair e qualquer hora pode entrar. Salva a cada mudança, como
+   o resto do app. Horário com alguém marcado não sai: remarque antes.
+   --------------------------------------------------------------------- */
+function HorariosDoDia({ db, update, notify, data }) {
+  const [nova, setNova] = useState("");
+  const personalizado = !!db.gradeDia?.[data];
+  const horas = gradeDoDia(db, data);
+  const almoco = db.gradeDia?.[data]?.almoco || null;
+  const ocupadas = new Set(db.agendamentos.filter((a) => a.data === data).map((a) => a.hora));
+  const mudar = (patch) => update((d) => {
+    const atual = d.gradeDia?.[data] || { horas: gradeDoDia(d, data), almoco: null };
+    d.gradeDia = { ...(d.gradeDia || {}), [data]: { ...atual, ...patch } };
+    return d;
+  });
+
+  return (
+    <section className="mf-panel mf-stack" style={{ gap: 8 }}>
+      <h3><Clock size={17} style={{ verticalAlign: -3 }} /> Horários deste dia</h3>
+      <p className="sub">{personalizado ? "Personalizado só para esta data." : "Seguindo a grade padrão de Ajustes. O que mudar aqui vale só para esta data."}</p>
+      <div className="mf-stack" style={{ gap: 2 }}>
+        {horas.map((h) => (
+          <div key={h} className="mf-row mf-between">
+            <span className="mf-hora">{h}</span>
+            {ocupadas.has(h)
+              ? <small className="mf-muted">tem horário marcado</small>
+              : <button type="button" className="mf-iconbtn" aria-label={`Tirar ${h}`} onClick={() => mudar({ horas: horas.filter((x) => x !== h) })}><X size={16} /></button>}
+          </div>
+        ))}
+        {horas.length === 0 && <small className="mf-muted">Nenhum horário neste dia. Acrescente abaixo.</small>}
+      </div>
+      <div className="mf-row">
+        <input className="mf-input" type="time" value={nova} onChange={(e) => setNova(e.target.value)} style={{ maxWidth: 140 }} aria-label="Novo horário" />
+        <button type="button" className="mf-btn sm alt" disabled={!horaValida(nova) || horas.includes(nova)}
+          onClick={() => { mudar({ horas: [...horas, nova].sort() }); setNova(""); }}><Plus size={14} />Acrescentar</button>
+      </div>
+      <label className="mf-toggle">
+        <input type="checkbox" checked={!!almoco} onChange={(e) => mudar({ almoco: e.target.checked ? { de: "12:00", minutos: 60 } : null })} />Almoço neste dia
+      </label>
+      {almoco && (
+        <div className="mf-grid mf-g2">
+          <label className="mf-field">Começa às
+            <input className="mf-input" type="time" value={almoco.de} onChange={(e) => e.target.value && mudar({ almoco: { ...almoco, de: e.target.value } })} />
+          </label>
+          <label className="mf-field">Duração (min)
+            <NumInput value={almoco.minutos} min={5} max={240} inteiro onChange={(v) => mudar({ almoco: { ...almoco, minutos: v } })} aria-label="Duração do almoço" />
+          </label>
+        </div>
+      )}
+      {personalizado && (
+        <button type="button" className="mf-link" style={{ alignSelf: "flex-start" }} onClick={() => {
+          update((d) => { const g = { ...(d.gradeDia || {}) }; delete g[data]; d.gradeDia = g; return d; }, true);
+          notify("Dia de volta à grade padrão", true);
+        }}>Voltar ao padrão</button>
+      )}
+    </section>
+  );
+}
+
 function DiaSheet({ db, update, notify, ask, data, onClose, onEncaixe }) {
   const cfg = db.config;
   const fechado = diaFechado(db, data);
@@ -656,7 +765,7 @@ function DiaSheet({ db, update, notify, ask, data, onClose, onEncaixe }) {
                 return (
                   <div key={a.id}>
                     <span className="mf-hora">{a.hora}</span>
-                    <span className="mf-grow mf-ellip"><b>{c?.nome || "Cliente"}</b><br /><small>{servicoDe(db, a.servicoId)?.nome}</small></span>
+                    <span className="mf-grow mf-ellip"><b>{c?.nome || "Cliente"}</b><br /><small>{nomeServicos(db, a)}</small></span>
                     <Tag tom={a.status === "concluido" ? "ok" : a.status === "faltou" ? "erro" : "neutro"}>{TXT_STATUS[a.status]}</Tag>
                     {a.status === "agendado" && futuro && c?.telefone && <a className="mf-btn sm alt" href={whats(c.telefone, msg, cfg.ddd)} target="_blank" rel="noreferrer"><MessageCircle size={14} />Lembrar</a>}
                   </div>
@@ -665,6 +774,8 @@ function DiaSheet({ db, update, notify, ask, data, onClose, onEncaixe }) {
             </div>
           </section>
         )}
+
+        {!fechado && <HorariosDoDia db={db} update={update} notify={notify} data={data} />}
 
         {!fechado && (
           <section className="mf-panel mf-stack" style={{ gap: 8 }}>
@@ -709,11 +820,13 @@ export function PendenciasSheet({ db, update, notify, ask, onClose }) {
   const cfg = db.config;
   const lista = pendentes(db);
   const [pags, setPags] = useState({});
+  const [dins, setDins] = useState({});
   const pagDe = (a) => pags[a.id] ?? cfg.pagamentoPadrao ?? "Pix";
+  const aplicarPagamento = (x) => { x.pagamento = pagDe(x); x.emDinheiro = x.pagamento === DIVIDIDO ? dins[x.id] ?? 0 : 0; };
   const fecharUm = (a, status) => {
     update((d) => {
       const x = d.agendamentos.find((y) => y.id === a.id);
-      if (x) Object.assign(x, { status, pagamento: status === "concluido" && x.tipo !== "pacote" ? pagDe(a) : x.pagamento });
+      if (x) { x.status = status; if (status === "concluido" && pagaAgora(x)) aplicarPagamento(x); }
       return d;
     });
   };
@@ -730,26 +843,33 @@ export function PendenciasSheet({ db, update, notify, ask, onClose }) {
               {ags.sort((a, b) => a.hora.localeCompare(b.hora)).map((a) => {
                 const c = clienteDe(db, a.clienteId);
                 return (
-                  <div key={a.id} className="mf-pend">
+                  <React.Fragment key={a.id}>
+                  <div className="mf-pend">
                     <span className="mf-hora">{a.hora}</span>
-                    <span className="quem"><b className="mf-ellip" style={{ display: "block" }}>{c?.nome || "Cliente"}</b><small>{servicoDe(db, a.servicoId)?.nome} · {a.tipo === "pacote" ? "pacote" : brl(a.valor)}</small></span>
-                    {a.tipo !== "pacote" && (
+                    <span className="quem"><b className="mf-ellip" style={{ display: "block" }}>{c?.nome || "Cliente"}</b><small>{nomeServicos(db, a)} · {a.tipo !== "pacote" ? brl(totalNaHora(a)) : valorAdicionais(a) ? `pacote + ${brl(valorAdicionais(a))}` : "pacote"}</small></span>
+                    {pagaAgora(a) && (
                       <select className="mf-input" style={{ width: "auto", padding: "6px 8px", fontSize: 14 }} value={pagDe(a)} onChange={(e) => setPags({ ...pags, [a.id]: e.target.value })} aria-label="Forma de pagamento">
-                        {PAGAMENTOS.map((p) => <option key={p}>{p}</option>)}
+                        {[...PAGAMENTOS, DIVIDIDO].map((p) => <option key={p}>{p}</option>)}
                       </select>
                     )}
                     <button className="mf-btn sm" onClick={() => fecharUm(a, "concluido")}><Check size={14} />Feito</button>
                     <button className="mf-btn sm alt" onClick={() => fecharUm(a, "faltou")}>Faltou</button>
                   </div>
+                  {pagaAgora(a) && pagDe(a) === DIVIDIDO && (
+                    <div style={{ padding: "2px 0 10px" }}>
+                      <ValoresDivididos emDinheiro={dins[a.id] ?? 0} total={totalNaHora(a)} onChange={(v) => setDins({ ...dins, [a.id]: v })} />
+                    </div>
+                  )}
+                  </React.Fragment>
                 );
               })}
             </section>
           ))}
-          <button className="mf-btn alt full" onClick={() => ask(`Marcar os ${lista.length} atendimentos como concluídos? Os que não são de pacote ficam com o pagamento escolhido em cada linha.`, () => {
+          <button className="mf-btn alt full" onClick={() => ask(`Marcar os ${lista.length} atendimentos como concluídos? Os que têm valor a pagar ficam com o pagamento escolhido em cada linha.`, () => {
             update((d) => {
               const ids = new Set(lista.map((a) => a.id));
               d.agendamentos.forEach((x) => {
-                if (ids.has(x.id)) { x.status = "concluido"; if (x.tipo !== "pacote") x.pagamento = pagDe(x); }
+                if (ids.has(x.id)) { x.status = "concluido"; if (pagaAgora(x)) aplicarPagamento(x); }
               });
               return d;
             }, true);

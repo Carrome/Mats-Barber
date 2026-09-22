@@ -99,6 +99,7 @@ font-family:'Archivo',system-ui,-apple-system,sans-serif;color:var(--tinta);back
 .mf-seg button.on{background:var(--papel);font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.15)}
 .mf-chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
 .mf-chip{border:1.5px solid var(--linha);background:var(--papel);border-radius:999px;padding:6px 12px;font-size:13px;white-space:nowrap;color:inherit}
+.mf-chip:disabled{opacity:.4;cursor:not-allowed}
 .mf-chip.on{background:var(--enfase);border-color:var(--enfase);color:var(--enfase-tx)}
 .mf-toggle{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
 .mf-toggle input{width:18px;height:18px;accent-color:var(--acento)}
@@ -163,7 +164,8 @@ font-family:'Archivo',system-ui,-apple-system,sans-serif;color:var(--tinta);back
 .mf-slot.oferta .h{color:var(--poste-tx);justify-self:stretch;text-align:center;padding:2px 0}
 .mf-slot.oferta.encerrada{opacity:.4;filter:grayscale(1)}
 .mf-slot.faltou .t{text-decoration:line-through;color:var(--poste-tx)}
-.mf-slot.feito{opacity:.8;padding-right:26px}
+.mf-slot.feito{background:var(--ok-c);border-top-color:var(--ok-b);border-right-color:var(--ok-b);border-bottom-color:var(--ok-b);padding-right:26px}
+.mf-slot.feito .s{color:var(--ok-tx)}
 .mf-painel-topo{display:none;justify-content:flex-end;margin:-6px -6px -10px 0}
 @media (min-width:900px){.mf-painel-topo{display:flex}}
 .mf-periodo{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}

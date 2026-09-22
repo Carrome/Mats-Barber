@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { baseVazia } from "./dados.js";
 import {
-  avisosAjustes, capacidadeMes, capacidadePeriodo, comumFlex, faturamentoMes, fatiasRosca, intervaloPeriodo, metaPeriodo, resumoPeriodo, vendasPorServico,
+  avisosAjustes, capacidadeMes, capacidadePeriodo, comumFlex, DIVIDIDO, faturamentoMes, fatiasRosca, intervaloPeriodo, metaPeriodo, partesPagamento,
+  recebidoNoDia, resumoPeriodo, rotuloPagamento, valorAdicionais, vendasPorServico,
+  gradeDoDia, horasDoDia, horasLivresNoDia, pausaDoDia, vagasLivres,
 } from "./regras.js";
 
 // quinta-feira, 17/09/2026 às 10h
@@ -174,5 +176,164 @@ describe("metaPeriodo", () => {
   it("sem meta cadastrada é zero", () => {
     const d = db(); d.config.meta = 0;
     expect(metaPeriodo(d, "2026-09-14", "2026-09-20")).toBe(0);
+  });
+});
+
+describe("serviços adicionais no mesmo horário", () => {
+  // Semana de 14 a 20/09, a partir do exemplo:
+  // corte avulso + barba (Dinheiro), corte do pacote + sobrancelha paga em Pix,
+  // e uma barba ainda marcada + pezinho.
+  const comAdicionais = () => {
+    const db = dbExemplo();
+    db.agendamentos[0].adicionais = [{ servicoId: "barba", valor: 25 }];
+    Object.assign(db.agendamentos[3], { adicionais: [{ servicoId: "sobrancelha", valor: 5 }], pagamento: "Pix" });
+    db.agendamentos[6].adicionais = [{ servicoId: "pezinho", valor: 5 }];
+    return db;
+  };
+
+  it("valorAdicionais soma os adicionais e trata atendimento antigo como sem adicional", () => {
+    expect(valorAdicionais({ adicionais: [{ servicoId: "barba", valor: 25 }, { servicoId: "pezinho", valor: 5 }] })).toBe(30);
+    expect(valorAdicionais({})).toBe(0);
+  });
+
+  it("adicional entra no faturamento como serviço, inclusive em cima de pacote", () => {
+    const r = resumoPeriodo(comAdicionais(), "2026-09-14", "2026-09-20");
+    expect(r).toMatchObject({ servicos: 125, campanhas: 35, pacotes: 0, total: 160, atendimentos: 5 });
+  });
+
+  it("adicional de horário ainda marcado entra no previsto", () => {
+    expect(resumoPeriodo(comAdicionais(), "2026-09-14", "2026-09-20").previsto).toBe(30);
+  });
+
+  it("adicional é recebido na forma de pagamento do atendimento", () => {
+    const { porPagamento } = resumoPeriodo(comAdicionais(), "2026-09-14", "2026-09-20");
+    expect(porPagamento).toMatchObject({ Dinheiro: 70, Pix: 90 });
+  });
+
+  it("cada adicional conta para o próprio serviço na rosca", () => {
+    expect(vendasPorServico(comAdicionais(), "2026-09-14", "2026-09-20")).toEqual([
+      { id: "corte", nome: "Cabelo", valor: 150, qtd: 4 },
+      { id: "cabelo-feminino", nome: "Cabelo feminino", valor: 50, qtd: 1 },
+      { id: "barba", nome: "Barba", valor: 25, qtd: 1 },
+      { id: "sobrancelha", nome: "Sobrancelha", valor: 5, qtd: 1 },
+    ]);
+  });
+
+  it("Comum × Flex soma o valor do adicional sem contar um atendimento a mais", () => {
+    expect(comumFlex(comAdicionais(), "2026-09-14", "2026-09-20")).toEqual({
+      comum: { valor: 155, qtd: 3 },
+      flex: { valor: 75, qtd: 2 },
+    });
+  });
+
+  it("recebido no dia inclui o adicional", () => {
+    expect(recebidoNoDia(comAdicionais(), "2026-09-14")).toEqual({ total: 70, porPagamento: { Dinheiro: 70 } });
+    expect(recebidoNoDia(comAdicionais(), "2026-09-17").total).toBe(5);
+  });
+
+  it("adicional de falta não conta", () => {
+    const db = comAdicionais();
+    db.agendamentos[5].adicionais = [{ servicoId: "pezinho", valor: 5 }];
+    expect(resumoPeriodo(db, "2026-09-14", "2026-09-20").total).toBe(160);
+  });
+});
+
+describe("pagamento dividido entre dinheiro e Pix", () => {
+  it("pagamento numa forma só vai inteiro para ela", () => {
+    expect(partesPagamento("Pix", 0, 70)).toEqual({ Pix: 70 });
+  });
+
+  it("dividido guarda a parte em dinheiro e o resto é Pix", () => {
+    expect(partesPagamento(DIVIDIDO, 20, 70)).toEqual({ Dinheiro: 20, Pix: 50 });
+  });
+
+  it("se o total mudar depois, o Pix se ajusta e a soma continua fechando", () => {
+    expect(partesPagamento(DIVIDIDO, 20, 95)).toEqual({ Dinheiro: 20, Pix: 75 });
+  });
+
+  it("dinheiro acima do total fica limitado ao total", () => {
+    expect(partesPagamento(DIVIDIDO, 100, 70)).toEqual({ Dinheiro: 70, Pix: 0 });
+  });
+
+  it("rótulo mostra as duas partes", () => {
+    expect(rotuloPagamento(DIVIDIDO, 20, 70)).toMatch(/^Dinheiro R\$\s20,00 \+ Pix R\$\s50,00$/);
+    expect(rotuloPagamento("Pix", 0, 70)).toBe("Pix");
+  });
+
+  it("recebido por forma de pagamento separa atendimento e pacote divididos", () => {
+    const db = dbExemplo();
+    // corte de 14/09 (R$ 45) pago R$ 15 em dinheiro e o resto em Pix
+    Object.assign(db.agendamentos[0], { pagamento: DIVIDIDO, emDinheiro: 15 });
+    // pacote de R$ 105 pago R$ 5 em dinheiro e o resto em Pix
+    Object.assign(db.pacotes[0], { pagamento: DIVIDIDO, emDinheiro: 5 });
+    const { porPagamento, total } = resumoPeriodo(db, "2026-09-01", "2026-09-30");
+    const antes = resumoPeriodo(dbExemplo(), "2026-09-01", "2026-09-30");
+    expect(total).toBe(antes.total);
+    expect(porPagamento.Dinheiro).toBe(r(antes.porPagamento.Dinheiro - 45 + 15 + 5));
+    expect(porPagamento.Pix).toBe(r(antes.porPagamento.Pix + 30 - 105 + 100));
+  });
+
+  it("recebido no dia também separa", () => {
+    const db = dbExemplo();
+    Object.assign(db.agendamentos[0], { pagamento: DIVIDIDO, emDinheiro: 15 });
+    expect(recebidoNoDia(db, "2026-09-14")).toEqual({ total: 45, porPagamento: { Dinheiro: 15, Pix: 30 } });
+  });
+});
+
+const r = (n) => Math.round(n * 100) / 100;
+
+describe("horários do dia", () => {
+  // 17/09/2026 é quinta; 18/09 é sexta
+  const base = () => {
+    const db = baseVazia();
+    Object.assign(db.config, { abertura: "08:00", intervalo: 60, qtdHorarios: 11, dias: [1, 2, 3, 4, 5, 6], pausas: [] });
+    return db;
+  };
+  const DE_HORA_EM_HORA = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
+  const cedo = (db) => { db.gradeDia = { "2026-09-17": { horas: ["07:00", "12:00", "15:00"], almoco: { de: "12:00", minutos: 60 } } }; return db; };
+
+  it("sem personalizar, o dia segue a grade padrão de hora em hora", () => {
+    expect(gradeDoDia(base(), "2026-09-17")).toEqual(DE_HORA_EM_HORA);
+  });
+
+  it("dia personalizado usa a lista dele, em ordem, e não mexe nos outros dias", () => {
+    const db = base();
+    db.gradeDia = { "2026-09-17": { horas: ["09:30", "06:40", "07:15"], almoco: null } };
+    expect(gradeDoDia(db, "2026-09-17")).toEqual(["06:40", "07:15", "09:30"]);
+    expect(gradeDoDia(db, "2026-09-18")).toEqual(DE_HORA_EM_HORA);
+  });
+
+  it("almoço do dia bloqueia só o que cai dentro dele, naquele dia", () => {
+    const db = cedo(base());
+    expect(pausaDoDia(db, "2026-09-17", "12:30")).toMatchObject({ motivo: "Almoço", de: "12:00", ate: "13:00" });
+    expect(pausaDoDia(db, "2026-09-17", "13:00")).toBe(null);
+    expect(pausaDoDia(db, "2026-09-18", "12:30")).toBe(null);
+  });
+
+  it("o início do almoço aparece na agenda mesmo que não esteja na lista", () => {
+    const db = base();
+    db.gradeDia = { "2026-09-17": { horas: ["11:00", "13:00"], almoco: { de: "12:10", minutos: 40 } } };
+    expect(horasDoDia(db, "2026-09-17")).toEqual(["11:00", "12:10", "13:00"]);
+  });
+
+  it("vagas livres seguem o dia personalizado e pulam o almoço", () => {
+    const v = vagasLivres(cedo(base()), "2026-09-17", "2026-09-17", new Date(2026, 8, 17, 6)).map((x) => x.hora);
+    expect(v).toEqual(["07:00", "15:00"]);
+  });
+
+  it("capacidade do dia conta os horários dele menos o almoço", () => {
+    expect(capacidadePeriodo(cedo(base()), "2026-09-17", "2026-09-17")).toBe(2);
+  });
+
+  it("horários para remarcar seguem o dia personalizado", () => {
+    expect(horasLivresNoDia(cedo(base()), "2026-09-17", null, new Date(2026, 8, 17, 6))).toEqual(["07:00", "15:00"]);
+  });
+
+  it("pausa fixa desligada não bloqueia nada", () => {
+    const db = base();
+    db.config.pausas = [{ id: "a", motivo: "Almoço", dias: [4], de: "12:00", ate: "13:00", ativa: false }];
+    expect(pausaDoDia(db, "2026-09-17", "12:00")).toBe(null);
+    db.config.pausas[0].ativa = true;
+    expect(pausaDoDia(db, "2026-09-17", "12:00")).toMatchObject({ motivo: "Almoço" });
   });
 });

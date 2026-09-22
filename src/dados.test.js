@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { abrirDados, baseVazia, migrar } from "./dados.js";
+import { abrirReal, baseVazia, migrar, montarPacote } from "./dados.js";
 import { PAGAMENTOS } from "./util.js";
 
 describe("formas de pagamento", () => {
@@ -66,20 +66,9 @@ describe("serviços da barbearia", () => {
   });
 });
 
-describe("abrirDados", () => {
-  it("sem nada salvo abre os dados de exemplo", () => {
-    expect(abrirDados(null).demo).toBe(true);
-  });
-  it("dados de exemplo de versão anterior são gerados de novo com os serviços atuais", () => {
-    const antigo = { versao: 2, demo: true, servicos: [{ id: "combo", nome: "Corte + barba", preco: 70 }], clientes: [], agendamentos: [] };
-    const d = abrirDados(antigo);
-    expect(d.demo).toBe(true);
-    expect(d.servicos.map((s) => s.id)).toContain("alisamento");
-    expect(d.agendamentos.length).toBeGreaterThan(0);
-    expect(d.agendamentos.some((a) => a.servicoId === "combo")).toBe(false);
-  });
+describe("abrirReal", () => {
   it("dados reais nunca são trocados pelo exemplo", () => {
-    const d = abrirDados({ versao: 2, demo: false, clientes: [{ id: "c1", nome: "Ana" }] });
+    const d = abrirReal({ versao: 2, demo: false, clientes: [{ id: "c1", nome: "Ana" }] });
     expect(d.demo).toBe(false);
     expect(d.clientes).toHaveLength(1);
   });
@@ -103,5 +92,60 @@ describe("nome da barbearia", () => {
 
   it("instalação nova já nasce com o nome certo", () => {
     expect(baseVazia().config.nome).toBe("Barbearia do Matheus");
+  });
+});
+
+describe("serviços adicionais", () => {
+  it("atendimento antigo ganha lista de adicionais vazia", () => {
+    const d = baseVazia();
+    d.agendamentos.push({ id: "a1", data: "2026-09-01", hora: "10:00", tipo: "avulso", servicoId: "corte", valor: 45, status: "concluido" });
+    expect(migrar(d).agendamentos[0].adicionais).toEqual([]);
+  });
+
+  it("adicionais existentes são mantidos, com o valor arredondado em centavos", () => {
+    const d = baseVazia();
+    d.agendamentos.push({ id: "a1", data: "2026-09-01", hora: "10:00", tipo: "avulso", servicoId: "corte", valor: 45, status: "concluido", adicionais: [{ servicoId: "barba", valor: 24.999999 }] });
+    expect(migrar(d).agendamentos[0].adicionais).toEqual([{ servicoId: "barba", valor: 25 }]);
+  });
+});
+
+describe("venda de pacote com pagamento dividido", () => {
+  it("guarda a parte em dinheiro", () => {
+    const p = montarPacote(baseVazia(), { clienteId: "c1", planoId: "flex3", dataCompra: "2026-09-01", pagamento: "Dividido", emDinheiro: 40 });
+    expect(p).toMatchObject({ pagamento: "Dividido", emDinheiro: 40 });
+  });
+  it("numa forma só não guarda parte em dinheiro", () => {
+    const p = montarPacote(baseVazia(), { clienteId: "c1", planoId: "flex3", dataCompra: "2026-09-01", pagamento: "Pix", emDinheiro: 40 });
+    expect(p.emDinheiro).toBe(0);
+  });
+});
+
+describe("horários de hora em hora", () => {
+  it("instalação nova já vem de hora em hora, sem dia personalizado", () => {
+    expect(baseVazia().config).toMatchObject({ intervalo: 60, qtdHorarios: 11 });
+    expect(baseVazia().gradeDia).toEqual({});
+  });
+
+  it("quem estava no padrão antigo de 45 min passa para 1 h, terminando no mesmo horário", () => {
+    const m = migrar({ versao: 4, config: { abertura: "08:00", intervalo: 45, qtdHorarios: 15 } });
+    expect(m.config).toMatchObject({ intervalo: 60, qtdHorarios: 11 });
+  });
+
+  it("quem já tinha escolhido outra duração fica como está", () => {
+    expect(migrar({ versao: 4, config: { intervalo: 30, qtdHorarios: 20 } }).config).toMatchObject({ intervalo: 30, qtdHorarios: 20 });
+  });
+
+  it("almoço fixo fica desligado; as outras pausas continuam valendo", () => {
+    const m = migrar({ versao: 4, config: { pausas: [
+      { id: "a", motivo: "Almoço", dias: [1], de: "12:00", ate: "13:00" },
+      { id: "s", motivo: "Sábado só até 14h", dias: [6], de: "14:00", ate: "23:59" },
+    ] } });
+    expect(m.config.pausas.map((p) => p.ativa)).toEqual([false, true]);
+  });
+
+  it("depois de convertido, o que o dono escolher de novo fica", () => {
+    const m = migrar({ versao: 5, config: { intervalo: 45, qtdHorarios: 15, pausas: [{ id: "a", motivo: "Almoço", dias: [1], de: "12:00", ate: "13:00", ativa: true }] } });
+    expect(m.config).toMatchObject({ intervalo: 45, qtdHorarios: 15 });
+    expect(m.config.pausas[0].ativa).toBe(true);
   });
 });

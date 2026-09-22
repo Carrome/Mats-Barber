@@ -7,11 +7,11 @@ import {
 } from "lucide-react";
 import {
   addDays, brl, dataLonga, ddmm, ddmmaa, entregarArquivo, gerarCsv, hojeYmd,
-  momento, nomeMes, parse, primeiroNome, whats, ymd,
+  momento, nomeMes, parse, primeiroNome, r2, whats, ymd,
 } from "../util.js";
 import {
   atendeNoDia, clienteDe, comumFlex, diaFechado, fatiasRosca, infoPacote, intervaloPeriodo,
-  metaPeriodo, PERIODOS, recebidoNoDia, resumoPeriodo, servicoDe, TIPOS_ATENDIMENTO, vendasPorServico,
+  metaPeriodo, nomeServicos, PERIODOS, recebidoNoDia, resumoPeriodo, rotuloPagamento, TIPOS_ATENDIMENTO, valorAdicionais, vendasPorServico,
 } from "../regras.js";
 import { useAgora, Seg } from "../componentes.jsx";
 import { Rosca } from "./Rosca.jsx";
@@ -70,13 +70,14 @@ export function Painel({ db, notify, abrir, ocultar, alternarOcultar }) {
       const c = clienteDe(db, a.clienteId);
       const tipo = { avulso: "Preço normal", pacote: "Pacote", campanha: "Campanha", oferta: "Vaga em oferta" }[a.tipo] || a.tipo;
       const sit = a.tipo === "oferta" ? (momento(a.data, a.hora) < agora ? "Não vendida" : "Em oferta") : { agendado: "Agendado", concluido: "Concluído", faltou: "Faltou" }[a.status];
-      linhas.push([ddmmaa(a.data), a.hora, c?.nome || "", c?.telefone || "", servicoDe(db, a.servicoId)?.nome || "", tipo, sit, a.pagamento || "", a.tipo === "pacote" ? 0 : Number(a.valor) || 0, a.obs || ""]);
+      const cobrado = r2((a.tipo === "pacote" ? 0 : Number(a.valor) || 0) + valorAdicionais(a));
+      linhas.push([ddmmaa(a.data), a.hora, c?.nome || "", c?.telefone || "", nomeServicos(db, a), tipo, sit, rotuloPagamento(a.pagamento, a.emDinheiro, cobrado), cobrado, a.obs || ""]);
     });
     linhas.push([]);
     linhas.push(["Pacotes vendidos no mês"]);
     linhas.push(["Data", "Código", "Cliente", "Plano", "Pagamento", "Valor (R$)", "Situação"]);
     db.pacotes.filter((p) => p.dataCompra.startsWith(key)).forEach((p) => {
-      linhas.push([ddmmaa(p.dataCompra), p.codigo, clienteDe(db, p.clienteId)?.nome || "", p.planoNome, p.pagamento || "", Number(p.valorPago) || 0, infoPacote(db, p).status]);
+      linhas.push([ddmmaa(p.dataCompra), p.codigo, clienteDe(db, p.clienteId)?.nome || "", p.planoNome, rotuloPagamento(p.pagamento, p.emDinheiro, p.valorPago), Number(p.valorPago) || 0, infoPacote(db, p).status]);
     });
     linhas.push([]);
     linhas.push(["Resumo"]);
@@ -109,7 +110,7 @@ export function Painel({ db, notify, abrir, ocultar, alternarOcultar }) {
             {proximo ? (
               <button className="mf-next" style={{ textAlign: "left", width: "100%" }} onClick={() => abrir.horario(proximo.data, proximo.hora)}>
                 <span className="mf-hora">{proximo.hora}</span>
-                <span className="mf-grow"><small>Próximo cliente</small><br /><b>{clienteDe(db, proximo.clienteId)?.nome || "Cliente"}</b> · {servicoDe(db, proximo.servicoId)?.nome}</span>
+                <span className="mf-grow"><small>Próximo cliente</small><br /><b>{clienteDe(db, proximo.clienteId)?.nome || "Cliente"}</b> · {nomeServicos(db, proximo)}</span>
               </button>
             ) : deHoje.length > 0 && <p className="sub">Sem mais clientes marcados para hoje.</p>}
             <div className="mf-kpis">

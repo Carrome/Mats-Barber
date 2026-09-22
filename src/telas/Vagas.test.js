@@ -61,6 +61,14 @@ describe("imagem para stories", () => {
     expect(doCartao.filter((c) => c === "#FFFFFF").length).toBeGreaterThan(1);
   });
 
+  it("nunca desenha mais que 6 horários, nem aviso de horários sobrando", async () => {
+    const lista = Array.from({ length: 9 }, (_, i) => ({ id: `a${i}`, data: "2026-09-18", hora: `${String(9 + i).padStart(2, "0")}:00`, tipo: "oferta", campanhaId: "mattsflex", servicoId: "corte", valor: 35 }));
+    await desenharStory(baseVazia(), "2026-09-18", lista);
+    const horas = chamadas.filter((c) => c.nome === "fillText" && /^\d\d:00$/.test(c.args[0])).map((c) => c.args[0]);
+    expect(horas).toEqual(["09:00", "10:00", "11:00", "12:00", "13:00", "14:00"]);
+    expect(chamadas.some((c) => c.nome === "fillText" && /horário/.test(c.args[0]))).toBe(false);
+  });
+
   it("se a logo não carregar, a imagem é gerada mesmo assim", async () => {
     vi.stubGlobal("Image", class { set src(v) { this._src = v; setTimeout(() => this.onerror?.()); } get src() { return this._src; } });
     const blob = await desenharStory(baseVazia(), "2026-09-18", []);

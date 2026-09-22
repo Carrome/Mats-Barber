@@ -2,11 +2,14 @@
    Armazenamento, dados iniciais, migração e dados de exemplo
    ===================================================================== */
 import { addDays, formatarTel, hojeYmd, momento, pad, PAGAMENTOS, r2, uid, ymd } from "./util.js";
-import { horariosDe, pausaEm, precoCampanha, precoPlano } from "./regras.js";
+import { DIVIDIDO, horariosDe, pausaEm, precoCampanha, precoPlano } from "./regras.js";
 
-export const STORE_KEY = "matts-flex-app-v1";
-const KEY_ANTERIOR = STORE_KEY + "-anterior";
-export const VERSAO = 4;
+export const STORE_KEY = "matts-flex-app-v1";   // uso real: nome intocável, renomear apaga os dados
+export const TESTE_KEY = "matts-flex-teste-v1";  // modo teste
+export const MODO_KEY = "matts-flex-modo-v1";    // "real" ou "teste"
+const chaveDe = (teste) => (teste ? TESTE_KEY : STORE_KEY);
+const anteriorDe = (teste) => chaveDe(teste) + "-anterior";
+export const VERSAO = 5;
 
 // Tabela de serviços da barbearia (id "corte" mantido: os planos Mats Flex apontam para ele)
 export const SERVICOS_PADRAO = [
@@ -32,9 +35,9 @@ async function gravar(chave, txt) {
   else window.localStorage.setItem(chave, txt);
 }
 
-export async function carregar() {
+export async function carregar(teste = false) {
   try {
-    const raw = await ler(STORE_KEY);
+    const raw = await ler(chaveDe(teste));
     return raw ? JSON.parse(raw) : null;
   } catch (e) {
     console.error("Erro ao carregar", e);
@@ -42,10 +45,12 @@ export async function carregar() {
   }
 }
 
-// Retorna true se salvou (false = armazenamento cheio/bloqueado)
+// Retorna true se salvou (false = armazenamento cheio/bloqueado).
+// Quem decide o lugar é o próprio dado: teste nunca consegue cair na chave real,
+// nem se for salvo no meio de uma troca de modo.
 export async function salvar(db) {
   try {
-    await gravar(STORE_KEY, JSON.stringify(db));
+    await gravar(chaveDe(!!db.teste), JSON.stringify(db));
     return true;
   } catch (e) {
     console.error("Erro ao salvar", e);
@@ -53,12 +58,54 @@ export async function salvar(db) {
   }
 }
 
-// Cópia de segurança automática antes de restaurar backup, apagar tudo ou carregar exemplo
+// Cópia de segurança automática antes de restaurar backup ou apagar tudo, uma por lado
 export async function guardarCopiaAnterior(db) {
-  try { await gravar(KEY_ANTERIOR, JSON.stringify({ salvoEm: new Date().toISOString(), db })); } catch (e) { /* sem espaço: ignora */ }
+  try { await gravar(anteriorDe(!!db.teste), JSON.stringify({ salvoEm: new Date().toISOString(), db })); } catch (e) { /* sem espaço: ignora */ }
 }
-export async function lerCopiaAnterior() {
-  try { const raw = await ler(KEY_ANTERIOR); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+export async function lerCopiaAnterior(teste = false) {
+  try { const raw = await ler(anteriorDe(teste)); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+}
+
+export async function lerModo() {
+  try { return (await ler(MODO_KEY)) === "teste" ? "teste" : "real"; } catch (e) { return "real"; }
+}
+export async function gravarModo(modo) {
+  try { await gravar(MODO_KEY, modo === "teste" ? "teste" : "real"); } catch (e) { /* ignora */ }
+}
+
+// Até esta versão tudo o que havia no aparelho era teste. Na primeira abertura
+// isso passa para o modo teste e o uso real começa sem clientes nem agenda,
+// mantendo ajustes, serviços, planos e campanhas. Nada é apagado: o original vai
+// inteiro para o teste e fica também como cópia automática do uso real.
+export async function separarTeste() {
+  try {
+    if (await ler(MODO_KEY)) return false;
+    const raw = await ler(STORE_KEY);
+    if (raw) {
+      const antigo = JSON.parse(raw);
+      if (!(await ler(TESTE_KEY))) {
+        await gravar(TESTE_KEY, JSON.stringify({ ...antigo, teste: true, demo: true }));
+        await gravar(anteriorDe(false), JSON.stringify({ salvoEm: new Date().toISOString(), db: antigo }));
+      }
+      const v = baseVazia();
+      // a versão antiga vai junto, para as conversões de migrar() valerem também aqui
+      v.versao = Number(antigo.versao) || 0;
+      const config = { ...v.config, ...(antigo.config || {}) };
+      // as pausas do exemplo (almoço, sábado até 14h) não são do Matheus
+      if (antigo.demo) config.pausas = [];
+      await gravar(STORE_KEY, JSON.stringify({
+        ...v, config,
+        servicos: Array.isArray(antigo.servicos) ? antigo.servicos : v.servicos,
+        planos: Array.isArray(antigo.planos) ? antigo.planos : v.planos,
+        campanhas: Array.isArray(antigo.campanhas) ? antigo.campanhas : v.campanhas,
+      }));
+    }
+    await gravar(MODO_KEY, "real");
+    return !!raw;
+  } catch (e) {
+    console.error("Erro ao separar o modo teste", e);
+    return false;
+  }
 }
 
 export function baseVazia() {
@@ -66,7 +113,7 @@ export function baseVazia() {
     versao: VERSAO,
     demo: false,
     config: {
-      nome: "Barbearia do Matheus", abertura: "08:00", intervalo: 45, qtdHorarios: 15, dias: [1, 2, 3, 4, 5, 6],
+      nome: "Barbearia do Matheus", abertura: "08:00", intervalo: 60, qtdHorarios: 11, dias: [1, 2, 3, 4, 5, 6],
       alertaDias: 7, meta: 6000, ddd: "", pagamentoPadrao: "Pix", retornoPadrao: 30, toleranciaRetorno: 5,
       pausas: [], ultimoBackup: "", tema: "auto",
     },
@@ -82,6 +129,7 @@ export function baseVazia() {
     pacotes: [],
     agendamentos: [],
     fechados: [],
+    gradeDia: {},
   };
 }
 
@@ -103,6 +151,17 @@ export function migrar(d) {
   if (versaoAntiga < 4 && cfg.nome === "Barbearia do Matts") cfg.nome = "Barbearia do Matheus";
   if (!Array.isArray(cfg.dias) || !cfg.dias.length) cfg.dias = b.config.dias;
   if (!Array.isArray(cfg.pausas)) cfg.pausas = [];
+  if (!out.gradeDia || typeof out.gradeDia !== "object" || Array.isArray(out.gradeDia)) out.gradeDia = {};
+  // versão 5: grade de hora em hora e almoço marcado dia a dia, na agenda.
+  // Só converte quem ainda estava no padrão antigo de 45 min, e mantém o último
+  // horário do dia no mesmo lugar. O almoço fixo fica desligado, não apagado.
+  if (versaoAntiga < 5) {
+    if (Number(cfg.intervalo) === 45) {
+      cfg.qtdHorarios = Math.floor(((Number(cfg.qtdHorarios) || 15) - 1) * 45 / 60) + 1;
+      cfg.intervalo = 60;
+    }
+    cfg.pausas = cfg.pausas.map((p) => ({ ...p, ativa: /almo/i.test(p.motivo || "") ? false : p.ativa ?? true }));
+  }
   out.campanhas = out.campanhas.map((c) => ({ servicoIds: [], descontoTipo: "pct", descontoValor: 0, descontoPct: 0, descricao: "", ...c }));
   out.planos = out.planos.map((p) => ({ somenteVagas: false, descricao: "", ...p }));
   out.clientes = out.clientes.map((c) => ({ telefone: "", obs: "", aniversario: "", indicadoPor: "", ...c }));
@@ -110,18 +169,27 @@ export function migrar(d) {
   const semCartao = (p) => (/^cart[aã]o/i.test(p || "") ? "Dinheiro" : p);
   cfg.pagamentoPadrao = semCartao(cfg.pagamentoPadrao);
   out.pacotes = out.pacotes.map((p) => ({ extraDias: 0, ...p, pagamento: semCartao(p.pagamento) }));
-  out.agendamentos = out.agendamentos.map((a) => ({ pagamento: "", obs: "", ...a, valor: r2(a.valor), pagamento: semCartao(a.pagamento) || "" }));
+  out.agendamentos = out.agendamentos.map((a) => ({
+    pagamento: "", obs: "", ...a, valor: r2(a.valor), pagamento: semCartao(a.pagamento) || "",
+    adicionais: Array.isArray(a.adicionais) ? a.adicionais.map((x) => ({ ...x, valor: r2(x.valor) })) : [],
+  }));
   return out;
 }
 
-// Dados ao abrir o app: exemplo antigo é gerado de novo; dados reais só migram
-export function abrirDados(d) {
-  if (!d) return criarDemo();
-  if (d.demo && (Number(d.versao) || 0) < VERSAO) return criarDemo();
-  return migrar(d);
+// Uso real: instalação nova começa vazia
+export function abrirReal(d) {
+  const db = d ? migrar(d) : baseVazia();
+  return { ...db, teste: false, demo: false };
 }
 
-export function montarPacote(db, { clienteId, planoId, dataCompra, pagamento }) {
+// Modo teste: o exemplo só é gerado se ainda não houver nada. O que ele fez
+// no teste fica, mesmo vindo de versão antiga.
+export function abrirTeste(d) {
+  const db = d ? migrar(d) : criarDemo();
+  return { ...db, teste: true, demo: true };
+}
+
+export function montarPacote(db, { clienteId, planoId, dataCompra, pagamento, emDinheiro }) {
   const plano = db.planos.find((p) => p.id === planoId);
   const doPlano = db.pacotes.filter((p) => p.planoId === planoId || p.codigo?.startsWith(plano.sigla + "-"));
   const maior = doPlano.reduce((m, p) => Math.max(m, Number((p.codigo || "").split("-")[1]) || 0), 0);
@@ -129,7 +197,8 @@ export function montarPacote(db, { clienteId, planoId, dataCompra, pagamento }) 
     id: uid(), codigo: `${plano.sigla}-${pad(maior + 1, 3)}`, clienteId, planoId, planoNome: plano.nome,
     servicoId: plano.servicoId, qtd: Number(plano.qtd), validadeDias: Number(plano.validadeDias), extraDias: 0,
     valorPago: precoPlano(db, plano), economia: r2(plano.qtd * plano.descontoPorUso), somenteVagas: !!plano.somenteVagas,
-    dataCompra, pagamento, cancelado: false, criadoEm: new Date().toISOString(),
+    dataCompra, pagamento, emDinheiro: pagamento === DIVIDIDO ? r2(Number(emDinheiro) || 0) : 0,
+    cancelado: false, criadoEm: new Date().toISOString(),
   };
 }
 
@@ -150,7 +219,6 @@ export function criarDemo() {
   const db = baseVazia();
   db.demo = true;
   db.config.pausas = [
-    { id: "almoco", motivo: "Almoço", dias: [1, 2, 3, 4, 5, 6], de: "12:30", ate: "13:15" },
     { id: "sabado", motivo: "Sábado só até 14h", dias: [6], de: "14:00", ate: "23:59" },
   ];
   const rnd = mulberry32(11);

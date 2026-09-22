@@ -3,8 +3,8 @@
    ===================================================================== */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Search, UserPlus, X } from "lucide-react";
-import { digitos, formatarTel, hojeYmd, norm, uid } from "./util.js";
-import { clienteDe } from "./regras.js";
+import { digitos, formatarTel, hojeYmd, norm, PAGAMENTOS, r2, uid } from "./util.js";
+import { clienteDe, DIVIDIDO, partesPagamento } from "./regras.js";
 
 export function useLargo() {
   const q = "(min-width: 900px)";
@@ -219,6 +219,38 @@ export function ClientePicker({ db, update, valor, onChange, permitirNovo = true
         {lista.length === 0 && <small>Nenhum cliente encontrado.</small>}
       </div>
       {permitirNovo && <button type="button" className="mf-btn alt sm" onClick={() => { setNome(/\d{4}/.test(q) ? "" : q); setTel(/\d{4}/.test(q) ? q : ""); setNovo(true); }}><UserPlus size={16} />Novo cliente</button>}
+    </div>
+  );
+}
+
+// Os dois campos do pagamento dividido se completam: digitar num preenche o
+// outro com o que falta para o total, então a soma sempre fecha.
+export function ValoresDivididos({ emDinheiro, total, onChange }) {
+  const partes = partesPagamento(DIVIDIDO, emDinheiro, total);
+  const t = r2(Number(total) || 0);
+  return (
+    <div className="mf-grid mf-g2">
+      <label className="mf-field">Em dinheiro
+        <NumInput value={partes.Dinheiro} min={0} max={t} onChange={(v) => onChange(r2(v))} aria-label="Valor em dinheiro" />
+      </label>
+      <label className="mf-field">No Pix
+        <NumInput value={partes.Pix} min={0} max={t} onChange={(v) => onChange(r2(t - v))} aria-label="Valor no Pix" />
+      </label>
+    </div>
+  );
+}
+
+// Pix, Dinheiro ou dividido entre os dois
+export function FormaPagamento({ pagamento, emDinheiro, total, onChange }) {
+  return (
+    <div className="mf-stack" style={{ gap: 8 }}>
+      <div className="mf-quick">
+        {[...PAGAMENTOS, DIVIDIDO].map((p) => (
+          <button type="button" key={p} className={pagamento === p ? "on" : ""}
+            onClick={() => onChange({ pagamento: p, emDinheiro: p === DIVIDIDO ? partesPagamento(DIVIDIDO, emDinheiro, total).Dinheiro : 0 })}>{p}</button>
+        ))}
+      </div>
+      {pagamento === DIVIDIDO && <ValoresDivididos emDinheiro={emDinheiro} total={total} onChange={(v) => onChange({ pagamento, emDinheiro: v })} />}
     </div>
   );
 }

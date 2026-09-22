@@ -7,7 +7,7 @@ import {
   aniversarioValido, brl, dataLonga, ddmm, ddmmaa, diasAteAniversario, formatarTel, hojeYmd, iniciais, mascaraDDMM,
   primeiroNome, soma, uid, whats, plural,
 } from "../util.js";
-import { clienteDe, infoPacote, infoRetorno, servicoDe, TOM_STATUS, TIPOS_ATENDIMENTO } from "../regras.js";
+import { clienteDe, infoPacote, infoRetorno, nomeServicos, TOM_STATUS, TIPOS_ATENDIMENTO, valorAdicionais } from "../regras.js";
 import { BarraSaldo, buscaCliente, Campo, clienteParecido, ClientePicker, Sheet, Tag } from "../componentes.jsx";
 
 export const msgRetorno = (db, c, r) =>
@@ -168,7 +168,7 @@ export function ClienteDetalhe({ db, update, notify, ask, cliente, abrir, onClos
   const cfg = db.config;
   const pacs = db.pacotes.filter((p) => p.clienteId === cliente.id).map((p) => ({ p, i: infoPacote(db, p) }));
   const ags = db.agendamentos.filter((a) => a.clienteId === cliente.id && TIPOS_ATENDIMENTO.includes(a.tipo)).sort((a, b) => (b.data + b.hora).localeCompare(a.data + a.hora));
-  const gasto = soma(ags.filter((a) => a.status === "concluido"), (a) => a.valor) + soma(pacs.filter((x) => !x.p.cancelado), (x) => x.p.valorPago);
+  const gasto = soma(ags.filter((a) => a.status === "concluido"), (a) => (Number(a.valor) || 0) + valorAdicionais(a)) + soma(pacs.filter((x) => !x.p.cancelado), (x) => x.p.valorPago);
   const r = infoRetorno(db, cliente);
   const quemIndicou = cliente.indicadoPor && clienteDe(db, cliente.indicadoPor);
   const indicados = db.clientes.filter((c) => c.indicadoPor === cliente.id);
@@ -233,7 +233,7 @@ export function ClienteDetalhe({ db, update, notify, ask, cliente, abrir, onClos
           <div className="mf-list mf-panel" style={{ padding: "0 12px" }}>
             {(todos ? ags : ags.slice(0, 10)).map((a) => (
               <button key={a.id} className="mf-item" onClick={() => abrir.horario(a.data, a.hora)}>
-                <div className="mf-grow"><b>{ddmmaa(a.data)} às {a.hora}</b><br /><small>{servicoDe(db, a.servicoId)?.nome}, {a.tipo === "pacote" ? "pacote" : a.tipo === "campanha" ? "campanha" : "preço normal"}{a.tipo !== "pacote" ? ` · ${brl(a.valor)}` : ""}</small></div>
+                <div className="mf-grow"><b>{ddmmaa(a.data)} às {a.hora}</b><br /><small>{nomeServicos(db, a)}, {a.tipo === "pacote" ? "pacote" : a.tipo === "campanha" ? "campanha" : "preço normal"}{a.tipo !== "pacote" || valorAdicionais(a) ? ` · ${brl((a.tipo === "pacote" ? 0 : Number(a.valor) || 0) + valorAdicionais(a))}` : ""}</small></div>
                 <Tag tom={a.status === "concluido" ? "ok" : a.status === "faltou" ? "erro" : "neutro"}>{a.status === "concluido" ? "Concluído" : a.status === "faltou" ? "Faltou" : "Agendado"}</Tag>
               </button>
             ))}

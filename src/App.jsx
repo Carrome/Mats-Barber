@@ -9,11 +9,13 @@
      telas/*.jsx    Painel, Agenda, Vagas, Clientes, Planos, Ajustes
    ===================================================================== */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, Eye, EyeOff, LayoutDashboard, RefreshCw, Settings, Sparkles, Ticket, Users, AlertTriangle } from "lucide-react";
+import { CalendarDays, Eye, EyeOff, FlaskConical, LayoutDashboard, RefreshCw, Settings, Sparkles, Ticket, Users, AlertTriangle } from "lucide-react";
 import { CSS } from "./estilos.js";
 import { entregarArquivo, hojeYmd } from "./util.js";
 import { avisosAjustes, pendentes } from "./regras.js";
-import { abrirDados, baseVazia, carregar, criarDemo, guardarCopiaAnterior, migrar, salvar, STORE_KEY } from "./dados.js";
+import {
+  abrirReal, abrirTeste, baseVazia, carregar, gravarModo, guardarCopiaAnterior, lerModo, migrar, salvar, separarTeste, STORE_KEY, TESTE_KEY,
+} from "./dados.js";
 import { criarNuvem, lerNuvem, sessaoAtual } from "./nuvem.js";
 import { decidirAcao, ehVazio, gravarMarca, lerMarca } from "./sincronia.js";
 import { Sheet } from "./componentes.jsx";
@@ -69,6 +71,11 @@ export default function App() {
   const dbRef = useRef(null);
   dbRef.current = db;
   const reconciliado = useRef(false);
+  // "real" ou "teste". Os dois lados têm armazenamento próprio (ver dados.js)
+  const [modo, setModo] = useState("real");
+  const modoRef = useRef("real");
+  modoRef.current = modo;
+  const abrirNoModo = (m, d) => (m === "teste" ? abrirTeste(d) : abrirReal(d));
 
   /* ---------- checar sessão, carregar o que já está no aparelho, instalar, proteger dados ---------- */
   useEffect(() => {
@@ -76,8 +83,11 @@ export default function App() {
     (async () => {
       // O que está no aparelho vem primeiro: o app abre com ou sem internet,
       // e a tela nunca espera a checagem de sessão responder.
-      const local = abrirDados(await carregar());
+      await separarTeste();
+      const m = await lerModo();
+      const local = abrirNoModo(m, await carregar(m === "teste"));
       if (!vivo) return;
+      setModo(m);
       setDb(local);
       const s = await sessaoAtual();
       if (vivo) setSessao(s || false);
@@ -103,14 +113,9 @@ export default function App() {
   }, []);
 
   /* ---------- reconciliar aparelho e banco, uma única vez ----------
-     Não roda enquanto os dados forem de exemplo (db.demo): o dono pode ter
-     agendamentos reais lançados por cima do exemplo, e ehVazio() trata demo
-     como vazio de propósito (trava contra aparelho zerado). Decidir aqui
-     apagaria esses dados reais. O aviso que já existe ("Começar do zero" /
-     "Continuar com eles") resolve isso; quando o dono escolhe, db.demo vira
-     false, o efeito roda de novo (está nas deps) e reconcilia então. */
+     Só o uso real conversa com o banco: o modo teste nunca sobe nem baixa nada. */
   useEffect(() => {
-    if (!sessao || !db || db.demo || reconciliado.current) return;
+    if (!sessao || !db || db.teste || db.demo || reconciliado.current) return;
     reconciliado.current = true;
     let vivo = true;
     (async () => {
@@ -143,10 +148,11 @@ export default function App() {
     const vis = () => document.visibilityState === "hidden" && flush();
     document.addEventListener("visibilitychange", vis);
     window.addEventListener("pagehide", flush);
-    // outra aba aberta mexeu nos dados: recarrega
+    // outra aba aberta mexeu nos dados deste mesmo modo: recarrega
     const outra = (e) => {
-      if (e.key !== STORE_KEY || !e.newValue) return;
-      try { setDb(migrar(JSON.parse(e.newValue))); } catch (err) { /* ignora */ }
+      const m = modoRef.current;
+      if (e.key !== (m === "teste" ? TESTE_KEY : STORE_KEY) || !e.newValue) return;
+      try { setDb(abrirNoModo(m, JSON.parse(e.newValue))); } catch (err) { /* ignora */ }
     };
     window.addEventListener("storage", outra);
     return () => { document.removeEventListener("visibilitychange", vis); window.removeEventListener("pagehide", flush); window.removeEventListener("storage", outra); };
@@ -178,7 +184,8 @@ export default function App() {
     const atual = dbRef.current;
     if (atual) guardarCopiaAnterior(atual);
     desfazerRef.current = atual;
-    setDb(novo);
+    // backup restaurado, cópia recuperada ou "começar do zero" ficam no modo em que se está
+    setDb(abrirNoModo(modoRef.current, novo));
     setClienteVer(null); setPacoteVer(null); setHorario(null); setVenda(null);
     if (msg) notify(msg, true);
   }, [notify]);
@@ -208,6 +215,22 @@ export default function App() {
       notify(r === "baixado" ? "Backup baixado. Guarde o arquivo no Drive ou WhatsApp." : "Backup enviado");
     } else if (r === "erro") notify("Não foi possível gerar o backup neste navegador");
   }, [update, notify]);
+
+  // Troca entre uso real e teste. Grava o lado atual antes de sair, para não
+  // perder a última alteração que ainda estava esperando para ser salva.
+  const trocarModo = useCallback(async (m) => {
+    const atual = dbRef.current;
+    if (atual) await salvar(atual);
+    await gravarModo(m);
+    const outro = abrirNoModo(m, await carregar(m === "teste"));
+    await salvar(outro); // o exemplo gerado na primeira entrada fica gravado desde já
+    desfazerRef.current = null; // desfazer não atravessa de um modo para o outro
+    setModo(m);
+    setDb(outro);
+    setClienteVer(null); setPacoteVer(null); setHorario(null); setVenda(null); setPendAberto(false);
+    go("painel");
+    notify(m === "teste" ? "Modo teste: pode mexer à vontade" : "De volta ao uso real");
+  }, [go, notify]);
 
   const ios = typeof navigator !== "undefined" && /iphone|ipad|ipod/i.test(navigator.userAgent);
   const standalone = typeof window !== "undefined" && (window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone);
@@ -256,7 +279,7 @@ export default function App() {
           <button className="mf-iconbtn" onClick={() => go("ajustes")} aria-label={rotuloAjustes}><Settings size={21} />{qtdAvisos > 0 && <span className="mf-badge" aria-hidden="true">{qtdAvisos > 9 ? "9+" : qtdAvisos}</span>}</button>
         </header>
 
-        {(db.demo || novaVersao || erroSalvar) && (
+        {(modo === "teste" || novaVersao || erroSalvar) && (
           <div className="mf-wrap mf-stack" style={{ paddingBottom: 0, gap: 8 }}>
             {erroSalvar && (
               <div className="mf-alerta"><AlertTriangle size={18} /><span className="mf-grow">Não foi possível salvar neste aparelho (memória cheia ou modo anônimo). Faça um backup agora.</span><button className="mf-btn sm poste" onClick={fazerBackup}>Backup</button></div>
@@ -264,14 +287,11 @@ export default function App() {
             {novaVersao && (
               <div className="mf-banner info" style={{ marginBottom: 0 }}><RefreshCw size={18} /><span className="mf-grow">Nova versão do Mats Flex instalada.</span><button className="mf-btn sm" onClick={() => window.location.reload()}>Atualizar</button></div>
             )}
-            {db.demo && (
+            {modo === "teste" && (
               <div className="mf-banner" style={{ marginBottom: 0 }}>
-                <span className="mf-grow">Você está vendo dados de exemplo para testar o app.</span>
-                <button className="mf-btn sm" onClick={() => ask("Apagar os dados de exemplo e começar do zero? Serviços, planos e campanhas são mantidos.", () => {
-                  const v = baseVazia();
-                  substituir({ ...v, config: { ...db.config, pausas: [] }, servicos: db.servicos, planos: db.planos, campanhas: db.campanhas }, "Pronto para começar");
-                })}>Começar do zero</button>
-                <button className="mf-link" onClick={() => update((d) => { d.demo = false; return d; })}>Continuar com eles</button>
+                <FlaskConical size={18} />
+                <span className="mf-grow"><b>Modo teste.</b> Clientes e horários de exemplo: nada aqui mexe nos dados reais.</span>
+                <button className="mf-btn sm" onClick={() => trocarModo("real")}>Voltar ao uso real</button>
               </div>
             )}
           </div>
@@ -283,7 +303,7 @@ export default function App() {
         {aba === "clientes" && <Clientes {...props} />}
         {aba === "planos" && <Planos {...props} sub={subPlanos} setSub={setSubPlanos} />}
         {aba === "ajustes" && (
-          <Ajustes {...props} substituir={substituir} fazerBackup={fazerBackup} persistido={persistido}
+          <Ajustes {...props} substituir={substituir} fazerBackup={fazerBackup} persistido={persistido} modo={modo} trocarModo={trocarModo}
             instalar={instalar || (ios && !standalone ? () => notify("No iPhone: toque em Compartilhar e depois em “Adicionar à Tela de Início”") : null)} />
         )}
       </main>
