@@ -26,8 +26,8 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 const lista = Array.from({ length: 8 }, (_, i) => ({ id: `a${i}`, data: "2026-09-18", hora: `${String(9 + i).padStart(2, "0")}:00`, tipo: "oferta", campanhaId: "mattsflex", servicoId: "corte", valor: 35 }));
 const abrir = (l = lista) => render(<StorySheet db={baseVazia()} notify={() => {}} data="2026-09-18" lista={l} onClose={() => {}} />);
-// última imagem que terminou de ser desenhada (o rodapé é o último texto)
-const ultima = () => desenhos.filter((d) => d.includes("CHAMA NO WHATSAPP")).at(-1) || [];
+// última imagem que terminou de ser desenhada (o rodapé é o último texto, igual nas duas redes)
+const ultima = () => desenhos.filter((d) => d.includes("e garanta o seu antes que acabe")).at(-1) || [];
 const horasDaUltima = () => ultima().filter((t) => /^\d\d:00$/.test(t));
 const chip = (h) => screen.getByRole("button", { name: h });
 
@@ -69,5 +69,35 @@ describe("escolher os horários da imagem de stories", () => {
     abrir(lista.slice(0, 1));
     marcar("09:00");
     await waitFor(() => expect(horasDaUltima()).toEqual(["09:00"]));
+  });
+});
+
+describe("versão para WhatsApp ou Instagram", () => {
+  const rede = (nome) => screen.getByRole("radio", { name: nome });
+
+  it("abre na versão do WhatsApp, com os dois botões acima da escolha dos horários", async () => {
+    abrir();
+    expect(rede("WhatsApp").getAttribute("aria-checked")).toBe("true");
+    expect(rede("Instagram").getAttribute("aria-checked")).toBe("false");
+    await waitFor(() => expect(ultima()).toContain("CHAMA NO WHATSAPP"));
+    const escolha = screen.getByText(/Escolha os horários da imagem/);
+    const botoes = screen.getByRole("radiogroup", { name: "Onde vai postar" });
+    expect(botoes.compareDocumentPosition(escolha) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("no Instagram a frase vira Direct e os horários escolhidos continuam marcados; voltar restaura", async () => {
+    abrir();
+    marcar("09:00", "11:00");
+    fireEvent.click(rede("Instagram"));
+    expect(rede("Instagram").getAttribute("aria-checked")).toBe("true");
+    await waitFor(() => expect(ultima()).toContain("ME CHAMA NO DIRECT"));
+    expect(ultima()).not.toContain("CHAMA NO WHATSAPP");
+    expect(horasDaUltima()).toEqual(["09:00", "11:00"]);
+    expect(chip("09:00").getAttribute("aria-pressed")).toBe("true");
+    expect(chip("11:00").getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(rede("WhatsApp"));
+    await waitFor(() => expect(ultima()).toContain("CHAMA NO WHATSAPP"));
+    expect(horasDaUltima()).toEqual(["09:00", "11:00"]);
   });
 });

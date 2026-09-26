@@ -73,9 +73,9 @@ export function Campo({ label, children, dica }) {
   return <div className="mf-field" role="group" aria-label={label}><span>{label}</span>{children}{extra}</div>;
 }
 
-export function Seg({ opcoes, valor, onChange }) {
+export function Seg({ opcoes, valor, onChange, rotulo }) {
   return (
-    <div className="mf-seg" role="radiogroup">
+    <div className="mf-seg" role="radiogroup" aria-label={rotulo}>
       {opcoes.map(([v, l]) => (
         <button key={v} type="button" role="radio" aria-checked={valor === v} className={valor === v ? "on" : ""} onClick={() => onChange(v)}>{l}</button>
       ))}

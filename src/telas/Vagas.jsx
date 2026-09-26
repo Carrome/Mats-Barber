@@ -169,8 +169,12 @@ const carregarImagem = (src) => new Promise((ok) => {
 // mais que isso os cartões ficam pequenos demais para ler no celular
 export const MAX_STORY = 6;
 
+// onde a imagem vai ser postada, e a chamada do rodapé em cada lugar
+const REDES = [["whatsapp", "WhatsApp"], ["instagram", "Instagram"]];
+const CHAMADA = { whatsapp: "CHAMA NO WHATSAPP", instagram: "ME CHAMA NO DIRECT" };
+
 // `todos` são as ofertas do dia inteiro: o título sai delas, então não muda com a escolha
-export async function desenharStory(db, data, lista, todos = lista) {
+export async function desenharStory(db, data, lista, todos = lista, rede = "whatsapp") {
   const W = 1080, H = 1920;
   const cv = document.createElement("canvas");
   cv.width = W; cv.height = H;
@@ -244,7 +248,7 @@ export async function desenharStory(db, data, lista, todos = lista) {
     g.fillText(brl(a.valor), x + w - 40, y + alt * 0.8);
   });
 
-  centro("CHAMA NO WHATSAPP", H - 250, `800 96px ${DISPLAY}`, "#FFFFFF");
+  centro(CHAMADA[rede] || CHAMADA.whatsapp, H - 250, `800 96px ${DISPLAY}`, "#FFFFFF");
   centro("e garanta o seu antes que acabe", H - 180, `500 44px ${TEXTO}`, "#F3E8CD");
 
   return new Promise((ok) => cv.toBlob((b) => ok(b), "image/png"));
@@ -255,22 +259,24 @@ export function StorySheet({ db, notify, data, lista, onClose }) {
   const [url, setUrl] = useState("");
   // começa sem nenhum: ele marca um por um os que quer na imagem, até o limite
   const [ids, setIds] = useState([]);
+  const [rede, setRede] = useState("whatsapp");
   const escolhidos = useMemo(() => lista.filter((a) => ids.includes(a.id)), [lista, ids]);
   const cheio = ids.length >= MAX_STORY;
   const alternar = (id) => setIds((xs) => (xs.includes(id) ? xs.filter((x) => x !== id) : xs.length >= MAX_STORY ? xs : [...xs, id]));
   useEffect(() => {
     let vivo = true, u = "";
-    desenharStory(db, data, escolhidos, lista).then((b) => {
+    desenharStory(db, data, escolhidos, lista, rede).then((b) => {
       if (!vivo || !b) return;
       u = URL.createObjectURL(b);
       setBlob(b); setUrl(u);
     });
     return () => { vivo = false; if (u) URL.revokeObjectURL(u); };
-  }, [db, data, escolhidos]);
+  }, [db, data, escolhidos, rede]);
   const nome = `vagas-${data}${escolhidos[0] ? "-" + escolhidos[0].hora.replace(":", "h") : ""}.png`;
   return (
     <Sheet titulo="Imagem para stories" sub={`${plural(escolhidos.length, "horário", "horários")} de ${dataLonga(data).toLowerCase()}`} onClose={onClose}>
       <div className="mf-stack">
+        <Seg opcoes={REDES} valor={rede} onChange={setRede} rotulo="Onde vai postar" />
         {lista.length > 0 && (
           <div>
             <small className="mf-muted">Escolha os horários da imagem ({escolhidos.length} de até {MAX_STORY})</small>
