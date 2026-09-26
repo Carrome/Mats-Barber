@@ -23,6 +23,12 @@ Feito:
 - [x] Leitura/gravação com trava de versão (`src/nuvem.js`) e decisão ao abrir (`src/sincronia.js`).
 - [x] Tela de entrada com usuário e senha (`src/telas/Login.jsx`).
 - [x] Reconciliação ao abrir (`src/App.jsx`), hoje **desligada**: `EXIGIR_LOGIN = false`.
+- [x] **Sincronização sem login** (2026-09-25): os celulares ficam iguais sem usuário, por um código fixo do app
+      (`sql/02-sem-login.sql`, `src/sincronizar.js`). Envia 3 s depois de cada alteração, confere a cada 30 s, ao
+      abrir e ao voltar para o app. Colisão: vale quem gravou primeiro. Primeira conexão: vale o lado com mais
+      dados (os do Matheus). Histórico das versões substituídas no banco. Cobre as tarefas 8 e 9 e a reconciliação
+      da tarefa 7 enquanto o login estiver desligado. Desenho em `docs/superpowers/specs/2026-09-25-*`.
+      Risco aceito: o código está no JavaScript público; o login volta a fechar isso.
 
 Falta:
 - [ ] Corrigir os achados da revisão da tarefa 7: sessão vencida não pode travar o app offline; a limpeza do efeito
