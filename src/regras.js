@@ -2,7 +2,7 @@
    Regras de negócio
    ===================================================================== */
 import {
-  addDays, brl, cap, ddmm, diffDias, fimMesYmd, fromMin, hojeYmd, inicioMes, momento, nomeMes, parse, r2, segundaDe, soma, toMin, ymd, PAGAMENTOS,
+  addDays, brl, cap, ddmm, diffDias, fimMesYmd, fromMin, hojeYmd, inicioMes, momento, nomeMes, pad, parse, primeiroNome, r2, segundaDe, soma, toMin, ymd, PAGAMENTOS,
 } from "./util.js";
 
 export const TIPOS_ATENDIMENTO = ["avulso", "pacote", "campanha"];
@@ -229,6 +229,41 @@ const pagaPrincipal = (a) => a.tipo === "avulso" || a.tipo === "campanha";
 const pagoNaHora = (a) => r2((pagaPrincipal(a) ? Number(a.valor) || 0 : 0) + valorAdicionais(a));
 const pagaNaHora = (a) => pagaPrincipal(a) || (TIPOS_ATENDIMENTO.includes(a.tipo) && valorAdicionais(a) > 0);
 
+/* ---------- pagar depois ----------
+   O atendimento foi feito e conta no faturamento do dia, mas o dinheiro ainda não
+   entrou. Fica "A receber" até ele marcar como pago; aí o recebido conta no dia do
+   pagamento (pagoEm). O lembrete só avisa com o app aberto. */
+export const A_RECEBER = "A receber";
+export const valorACobrar = (a) => pagoNaHora(a);
+
+export function aReceber(db) {
+  const chave = (a) => (a.lembrete ? `${a.lembrete.data} ${a.lembrete.hora}` : "9999");
+  return db.agendamentos.filter((a) => a.status === "concluido" && a.pagamento === A_RECEBER).sort((a, b) => chave(a).localeCompare(chave(b)));
+}
+
+// passou a hora do lembrete e ele ainda não cobrou depois dela
+export function cobrancasVencidas(db, agora = new Date()) {
+  return aReceber(db).filter((a) => {
+    if (!a.lembrete) return false;
+    const quando = momento(a.lembrete.data, a.lembrete.hora);
+    return quando <= agora && !(a.cobradoEm && new Date(a.cobradoEm) >= quando);
+  });
+}
+
+export function msgCobranca(db, a) {
+  const c = clienteDe(db, a.clienteId);
+  return `Oi, ${primeiroNome(c?.nome)}! Tudo bem? Passando para lembrar do pagamento de ${brl(valorACobrar(a))} do seu atendimento de ${ddmm(a.data)} (${nomeServicos(db, a)}). Obrigado!`;
+}
+
+// atalhos de hora: "1h" (arredonda para cima de 5 em 5 minutos), "noite" (hoje 20:00), "amanha" (09:00)
+export function lembreteRapido(qual, agora = new Date()) {
+  let d;
+  if (qual === "1h") { d = new Date(agora.getTime() + 60 * 60000); d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0); }
+  else if (qual === "noite") { d = new Date(agora); d.setHours(20, 0, 0, 0); }
+  else { d = addDays(agora, 1); d.setHours(9, 0, 0, 0); }
+  return { data: ymd(d), hora: `${pad(d.getHours())}:${pad(d.getMinutes())}` };
+}
+
 const concluidosNoPeriodo = (db, inicio, fim) =>
   db.agendamentos.filter((a) => a.status === "concluido" && TIPOS_ATENDIMENTO.includes(a.tipo) && noPeriodo(a.data, inicio, fim));
 
@@ -314,7 +349,8 @@ export function resumoPeriodo(db, inicio, fim) {
 }
 
 export function recebidoNoDia(db, data) {
-  const feitos = db.agendamentos.filter((a) => a.data === data && a.status === "concluido" && pagaNaHora(a));
+  // o pago depois conta no dia em que o dinheiro entrou; o que ainda está a receber não conta
+  const feitos = db.agendamentos.filter((a) => a.status === "concluido" && pagaNaHora(a) && a.pagamento !== A_RECEBER && (a.pagoEm || a.data) === data);
   const pac = db.pacotes.filter((p) => !p.cancelado && p.dataCompra === data);
   const porPagamento = {};
   feitos.forEach((a) => somarPartes(porPagamento, partesPagamento(a.pagamento, a.emDinheiro, pagoNaHora(a))));

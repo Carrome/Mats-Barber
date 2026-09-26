@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { baseVazia } from "./dados.js";
+import { brl } from "./util.js";
 import {
   avisosAjustes, capacidadeMes, capacidadePeriodo, comumFlex, DIVIDIDO, faturamentoMes, fatiasRosca, intervaloPeriodo, metaPeriodo, partesPagamento,
   recebidoNoDia, resumoPeriodo, rotuloPagamento, valorAdicionais, vendasPorServico,
   campanhaCobre, cheioDe, idsServicos, montarOferta, precoCampanha, primeiroCoberto, rotuloDesconto, totalOferta,
+  A_RECEBER, aReceber, cobrancasVencidas, lembreteRapido, msgCobranca, valorACobrar,
   gradeDoDia, horasDoDia, horasLivresNoDia, pausaDoDia, vagasLivres,
 } from "./regras.js";
 
@@ -411,5 +413,77 @@ describe("desconto por serviço e ofertas com mais de um serviço", () => {
     expect(totalOferta(a)).toBe(50);
     expect(cheioDe(db, a)).toBe(70);
     expect(totalOferta({ servicoId: "corte", valor: 35 })).toBe(35);
+  });
+});
+
+describe("pagar depois", () => {
+  const db0 = () => {
+    const db = baseVazia();
+    db.clientes.push({ id: "c1", nome: "João Silva", telefone: "(22) 99999-0000" });
+    return db;
+  };
+  const feito = (extra) => ({ id: extra.id || "a1", data: "2026-09-26", hora: "10:00", tipo: "avulso", clienteId: "c1", servicoId: "corte", valor: 45, status: "concluido", pagamento: A_RECEBER, emDinheiro: 0, obs: "", ...extra });
+
+  it("atalhos de hora do lembrete", () => {
+    const agora = new Date(2026, 8, 26, 14, 32);
+    expect(lembreteRapido("1h", agora)).toEqual({ data: "2026-09-26", hora: "15:35" });
+    expect(lembreteRapido("noite", agora)).toEqual({ data: "2026-09-26", hora: "20:00" });
+    expect(lembreteRapido("amanha", agora)).toEqual({ data: "2026-09-27", hora: "09:00" });
+    // perto da meia-noite, "daqui a 1 hora" vira o dia seguinte
+    expect(lembreteRapido("1h", new Date(2026, 8, 26, 23, 58))).toEqual({ data: "2026-09-27", hora: "01:00" });
+  });
+
+  it("a lista a receber só tem concluídos com pagar depois, pela hora do lembrete", () => {
+    const db = db0();
+    db.agendamentos.push(
+      feito({ id: "sem", lembrete: null }),
+      feito({ id: "noite", lembrete: { data: "2026-09-26", hora: "20:00" } }),
+      feito({ id: "tarde", lembrete: { data: "2026-09-26", hora: "15:00" } }),
+      feito({ id: "pago", pagamento: "Pix" }),
+      feito({ id: "marcado", status: "agendado" }),
+    );
+    expect(aReceber(db).map((a) => a.id)).toEqual(["tarde", "noite", "sem"]);
+  });
+
+  it("vence quando passa a hora, e sai do aviso depois de cobrado", () => {
+    const db = db0();
+    const l = { data: "2026-09-26", hora: "15:00" };
+    db.agendamentos.push(
+      feito({ id: "vencida", lembrete: l }),
+      feito({ id: "cobrada", lembrete: l, cobradoEm: new Date(2026, 8, 26, 15, 30).toISOString() }),
+      feito({ id: "cobradaAntes", lembrete: l, cobradoEm: new Date(2026, 8, 26, 14, 0).toISOString() }),
+      feito({ id: "futura", lembrete: { data: "2026-09-26", hora: "20:00" } }),
+    );
+    expect(cobrancasVencidas(db, new Date(2026, 8, 26, 16, 0)).map((a) => a.id)).toEqual(["vencida", "cobradaAntes"]);
+  });
+
+  it("valor a cobrar: o que se paga na hora", () => {
+    expect(valorACobrar(feito({ adicionais: [{ servicoId: "barba", valor: 25 }] }))).toBe(70);
+    expect(valorACobrar(feito({ tipo: "pacote", valor: 0, adicionais: [{ servicoId: "barba", valor: 25 }] }))).toBe(25);
+  });
+
+  it("mensagem de cobrança", () => {
+    const db = db0();
+    const a = feito({ adicionais: [{ servicoId: "barba", valor: 25 }] });
+    expect(msgCobranca(db, a)).toBe(`Oi, João! Tudo bem? Passando para lembrar do pagamento de ${brl(70)} do seu atendimento de 26/09 (Cabelo + Barba). Obrigado!`);
+  });
+
+  it("recebido do dia não conta o que ainda não foi pago, e conta o pago depois no dia do pagamento", () => {
+    const db = db0();
+    db.agendamentos.push(
+      feito({ id: "devendo" }),
+      feito({ id: "pagouDepois", pagamento: "Pix", pagoEm: "2026-09-28" }),
+      feito({ id: "pagouNaHora", pagamento: "Dinheiro" }),
+    );
+    expect(recebidoNoDia(db, "2026-09-26").total).toBe(45);
+    expect(recebidoNoDia(db, "2026-09-28")).toEqual({ total: 45, porPagamento: { Pix: 45 } });
+  });
+
+  it("no faturamento o atendimento conta, e aparece como a receber", () => {
+    const db = db0();
+    db.agendamentos.push(feito({ id: "devendo" }));
+    const r = resumoPeriodo(db, "2026-09-01", "2026-09-30");
+    expect(r.total).toBe(45);
+    expect(r.porPagamento[A_RECEBER]).toBe(45);
   });
 });
