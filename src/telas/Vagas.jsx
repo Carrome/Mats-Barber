@@ -182,7 +182,7 @@ export async function desenharStory(db, data, lista, todos = lista, rede = "what
   const DISPLAY = "'Big Shoulders Display', 'Arial Narrow', Impact, sans-serif";
   const TEXTO = "Archivo, Arial, sans-serif";
   try {
-    await Promise.all([document.fonts?.load(`800 120px 'Big Shoulders Display'`), document.fonts?.load(`600 40px Archivo`)]);
+    await Promise.all([document.fonts?.load(`800 120px 'Big Shoulders Display'`), document.fonts?.load(`600 40px Archivo`), document.fonts?.load(`700 40px Archivo`)]);
   } catch (e) { /* segue com fonte padrão */ }
 
   // fundo
@@ -225,6 +225,26 @@ export async function desenharStory(db, data, lista, todos = lista, rede = "what
   const alt = itens.length > 4 ? 150 : 190, gap = 26;
   const bloco = itens.length * alt + (itens.length - 1) * gap;
   const topo = Math.max(520, Math.round(520 + (H - 360 - 520 - bloco) / 2));
+  // nome do serviço: negrito, centralizado no espaço livre entre o horário e o preço.
+  // Nome comprido quebra em duas linhas antes de a letra diminuir.
+  const nomeNoCartao = (txt, esq, dir, meio) => {
+    const cabe = dir - esq;
+    let tam = alt * 0.32;
+    const fonte = () => { g.font = `700 ${tam}px ${TEXTO}`; };
+    const larg = (linhas) => Math.max(...linhas.map((l) => g.measureText(l).width));
+    fonte();
+    let linhas = [txt];
+    const palavras = txt.split(" ");
+    if (larg(linhas) > cabe && palavras.length > 1) {
+      // quebra no espaço que deixa a linha mais larga o mais curta possível
+      linhas = palavras.slice(1).map((_, i) => [palavras.slice(0, i + 1).join(" "), palavras.slice(i + 1).join(" ")])
+        .reduce((melhor, l) => (larg(l) < larg(melhor) ? l : melhor));
+    }
+    while (larg(linhas) > cabe && tam > alt * 0.18) { tam -= 2; fonte(); }
+    const entre = tam * 1.05;
+    g.fillStyle = "#1C1C1C"; g.textAlign = "center";
+    linhas.forEach((l, i) => g.fillText(l, (esq + dir) / 2, meio + (i - (linhas.length - 1) / 2) * entre + tam * 0.36));
+  };
   itens.forEach((a, i) => {
     const y = topo + i * (alt + gap);
     const s = servicoDe(db, a.servicoId);
@@ -234,12 +254,16 @@ export async function desenharStory(db, data, lista, todos = lista, rede = "what
     g.fillStyle = "#FFFFFF"; arredondado(x + borda, y + borda, w - borda * 2, alt - borda * 2, r - borda / 2); g.fill();
     g.textAlign = "left"; g.fillStyle = "#000000"; g.font = `800 ${alt * 0.56}px ${DISPLAY}`;
     g.fillText(a.hora, x + 40, y + alt * 0.68);
-    g.fillStyle = "#1C1C1C"; g.font = `600 ${alt * 0.24}px ${TEXTO}`;
-    g.fillText(s?.nome || "", x + alt * 1.75, y + alt * 0.6);
+    const fimHora = x + 40 + g.measureText(a.hora).width;
+    // o preço (e o antigo riscado, quando há) ocupa a direita: mede antes para o nome caber no meio
+    const antigo = s && s.preco > a.valor ? brl(s.preco) : "";
+    g.font = `800 ${alt * 0.4}px ${DISPLAY}`;
+    let larguraPreco = g.measureText(brl(a.valor)).width;
+    if (antigo) { g.font = `500 ${alt * 0.22}px ${TEXTO}`; larguraPreco = Math.max(larguraPreco, g.measureText(antigo).width); }
+    nomeNoCartao(s?.nome || "", fimHora + 24, x + w - 40 - larguraPreco - 24, y + alt / 2);
     g.textAlign = "right";
-    if (s && s.preco > a.valor) {
+    if (antigo) {
       g.fillStyle = "#6B6B6B"; g.font = `500 ${alt * 0.22}px ${TEXTO}`;
-      const antigo = brl(s.preco);
       g.fillText(antigo, x + w - 40, y + alt * 0.34);
       const tw = g.measureText(antigo).width;
       g.fillRect(x + w - 40 - tw, y + alt * 0.34 - alt * 0.075, tw, 4);
