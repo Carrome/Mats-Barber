@@ -104,6 +104,25 @@ describe("imagem para stories", () => {
     expect(linha1.alinhamento).toBe("center");
   });
 
+  it("oferta com combo mostra os serviços juntos, o total e o preço cheio riscado", async () => {
+    const lista = [{ id: "a1", data: "2026-09-18", hora: "10:00", tipo: "oferta", campanhaId: "mattsflex", servicoId: "corte", valor: 30, adicionais: [{ servicoId: "barba", valor: 20 }] }];
+    await desenharStory(baseVazia(), "2026-09-18", lista);
+    const textos = chamadas.filter((c) => c.nome === "fillText").map((c) => c.args[0]);
+    expect(textos).toContain("Cabelo + Barba");
+    expect(textos).toContain("R$ 50,00");
+    expect(textos).toContain("R$ 70,00");
+  });
+
+  it("combo comprido quebra antes do +, nunca deixando o + no fim da linha", async () => {
+    medir = medirParecido;
+    const lista = [{ id: "a1", data: "2026-09-18", hora: "10:00", tipo: "oferta", campanhaId: "mattsflex", servicoId: "corte", valor: 30, adicionais: [{ servicoId: "barba", valor: 20 }] }];
+    await desenharStory(baseVazia(), "2026-09-18", lista);
+    const textos = chamadas.filter((c) => c.nome === "fillText").map((c) => c.args[0]);
+    expect(textos).toContain("Cabelo");
+    expect(textos).toContain("+ Barba");
+    expect(textos.some((t) => /\+$/.test(t))).toBe(false);
+  });
+
   it("o rodapé chama no WhatsApp por padrão e no Direct na versão do Instagram", async () => {
     const lista = [{ id: "a1", data: "2026-09-18", hora: "10:00", tipo: "oferta", campanhaId: "mattsflex", servicoId: "corte", valor: 35 }];
     const textos = () => chamadas.filter((c) => c.nome === "fillText").map((c) => c.args[0]);

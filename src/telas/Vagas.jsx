@@ -4,7 +4,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Copy, Image as ImageIcon, Megaphone, MessageCircle, Share2, X, Download } from "lucide-react";
 import { addDays, brl, dataLonga, DIAS_LONGO, ddmm, entregarArquivo, hojeYmd, momento, parse, plural, uid, whats, ymd, fimMesYmd } from "../util.js";
-import { campanhaDe, campanhaVale, cheioDe, montarOferta, nomeServicos, primeiroCoberto, rotuloDesconto, servicoDe, totalOferta, vagasLivres } from "../regras.js";
+import { campanhaDe, campanhaVale, cheioDe, idsServicos, montarOferta, nomeServicos, primeiroCoberto, rotuloDesconto, totalOferta, vagasLivres } from "../regras.js";
 import { Campo, Seg, SeletorServicos, Sheet, useAgora } from "../componentes.jsx";
 
 export function Vagas({ db, update, notify }) {
@@ -102,7 +102,7 @@ export function Vagas({ db, update, notify }) {
                   <div className="mf-row mf-between mf-wrapr" style={{ marginBottom: 6, rowGap: 6 }}>
                     <b>{dataLonga(data)}</b>
                     <div className="mf-row mf-wrapr" style={{ gap: 6 }}>
-                      <button className="mf-btn sm alt" onClick={() => setStory({ data, lista })}><ImageIcon size={14} />Stories</button>
+                      <button className="mf-btn sm alt" onClick={() => setStory({ data })}><ImageIcon size={14} />Stories</button>
                       <button className="mf-btn sm alt" onClick={() => copiar(texto)}><Copy size={14} />Copiar</button>
                       <a className="mf-btn sm" href={whats("", texto)} target="_blank" rel="noreferrer"><MessageCircle size={14} />WhatsApp</a>
                     </div>
@@ -155,7 +155,8 @@ export function Vagas({ db, update, notify }) {
           <div className="mf-msg" style={{ userSelect: "text" }}>{msg}</div>
         </Sheet>
       )}
-      {story && <StorySheet db={db} notify={notify} {...story} onClose={() => setStory(null)} />}
+      {/* a lista vem viva do db: trocar os serviços nos stories aparece na hora */}
+      {story && <StorySheet db={db} update={update} notify={notify} data={story.data} lista={ofPorDia[story.data] || []} onClose={() => setStory(null)} />}
     </div>
   );
 }
@@ -240,10 +241,13 @@ export async function desenharStory(db, data, lista, todos = lista, rede = "what
     fonte();
     let linhas = [txt];
     const palavras = txt.split(" ");
-    if (larg(linhas) > cabe && palavras.length > 1) {
-      // quebra no espaço que deixa a linha mais larga o mais curta possível
-      linhas = palavras.slice(1).map((_, i) => [palavras.slice(0, i + 1).join(" "), palavras.slice(i + 1).join(" ")])
-        .reduce((melhor, l) => (larg(l) < larg(melhor) ? l : melhor));
+    // quebras possíveis: em qualquer espaço, menos logo depois de um "+" (em "Cabelo + Barba",
+    // o "+" desce junto com a Barba)
+    const quebras = palavras.slice(1).map((_, i) => [palavras.slice(0, i + 1).join(" "), palavras.slice(i + 1).join(" ")])
+      .filter(([primeira]) => !primeira.endsWith("+"));
+    if (larg(linhas) > cabe && quebras.length) {
+      // a que deixa a linha mais larga o mais curta possível
+      linhas = quebras.reduce((melhor, l) => (larg(l) < larg(melhor) ? l : melhor));
     }
     while (larg(linhas) > cabe && tam > alt * 0.18) { tam -= 2; fonte(); }
     const entre = tam * 1.05;
@@ -252,7 +256,7 @@ export async function desenharStory(db, data, lista, todos = lista, rede = "what
   };
   itens.forEach((a, i) => {
     const y = topo + i * (alt + gap);
-    const s = servicoDe(db, a.servicoId);
+    const total = totalOferta(a), cheio = cheioDe(db, a);
     const r = 28, x = 90, w = W - 180, borda = 12;
     // borda listrada do Flex e miolo branco por cima
     g.save(); arredondado(x, y, w, alt, r); g.clip(); listras(x, y, w, alt); g.restore();
@@ -261,11 +265,11 @@ export async function desenharStory(db, data, lista, todos = lista, rede = "what
     g.fillText(a.hora, x + 40, y + alt * 0.68);
     const fimHora = x + 40 + g.measureText(a.hora).width;
     // o preço (e o antigo riscado, quando há) ocupa a direita: mede antes para o nome caber no meio
-    const antigo = s && s.preco > a.valor ? brl(s.preco) : "";
+    const antigo = cheio > total ? brl(cheio) : "";
     g.font = `800 ${alt * 0.4}px ${DISPLAY}`;
-    let larguraPreco = g.measureText(brl(a.valor)).width;
+    let larguraPreco = g.measureText(brl(total)).width;
     if (antigo) { g.font = `500 ${alt * 0.22}px ${TEXTO}`; larguraPreco = Math.max(larguraPreco, g.measureText(antigo).width); }
-    nomeNoCartao(s?.nome || "", fimHora + 24, x + w - 40 - larguraPreco - 24, y + alt / 2);
+    nomeNoCartao(nomeServicos(db, a), fimHora + 24, x + w - 40 - larguraPreco - 24, y + alt / 2);
     g.textAlign = "right";
     if (antigo) {
       g.fillStyle = "#6B6B6B"; g.font = `500 ${alt * 0.22}px ${TEXTO}`;
@@ -274,7 +278,7 @@ export async function desenharStory(db, data, lista, todos = lista, rede = "what
       g.fillRect(x + w - 40 - tw, y + alt * 0.34 - alt * 0.075, tw, 4);
     }
     g.fillStyle = "#141414"; g.font = `800 ${alt * 0.4}px ${DISPLAY}`;
-    g.fillText(brl(a.valor), x + w - 40, y + alt * 0.8);
+    g.fillText(brl(total), x + w - 40, y + alt * 0.8);
   });
 
   centro(CHAMADA[rede] || CHAMADA.whatsapp, H - 250, `800 96px ${DISPLAY}`, "#FFFFFF");
@@ -283,7 +287,7 @@ export async function desenharStory(db, data, lista, todos = lista, rede = "what
   return new Promise((ok) => cv.toBlob((b) => ok(b), "image/png"));
 }
 
-export function StorySheet({ db, notify, data, lista, onClose }) {
+export function StorySheet({ db, update, notify, data, lista, onClose }) {
   const [blob, setBlob] = useState(null);
   const [url, setUrl] = useState("");
   // começa sem nenhum: ele marca um por um os que quer na imagem, até o limite
@@ -292,6 +296,16 @@ export function StorySheet({ db, notify, data, lista, onClose }) {
   const escolhidos = useMemo(() => lista.filter((a) => ids.includes(a.id)), [lista, ids]);
   const cheio = ids.length >= MAX_STORY;
   const alternar = (id) => setIds((xs) => (xs.includes(id) ? xs.filter((x) => x !== id) : xs.length >= MAX_STORY ? xs : [...xs, id]));
+  // trocar os serviços de um horário muda a oferta de verdade: story, agenda e mensagem ficam iguais
+  const trocarServicos = (a, camp, novos) => {
+    const o = montarOferta(db, camp, novos);
+    if (!o) return;
+    update((d) => {
+      const x = d.agendamentos.find((y) => y.id === a.id);
+      if (x) Object.assign(x, { servicoId: o.servicoId, valor: o.valor, adicionais: o.adicionais.map((v) => ({ ...v })) });
+      return d;
+    });
+  };
   useEffect(() => {
     let vivo = true, u = "";
     desenharStory(db, data, escolhidos, lista, rede).then((b) => {
@@ -320,6 +334,24 @@ export function StorySheet({ db, notify, data, lista, onClose }) {
               })}
             </div>
             {cheio && lista.length > MAX_STORY && <small className="mf-muted">Até {MAX_STORY} por imagem, para ficar legível. Tire um para trocar, ou faça outra imagem com os demais.</small>}
+          </div>
+        )}
+        {escolhidos.length > 0 && (
+          <div className="mf-stack" style={{ gap: 10 }}>
+            <small className="mf-muted">Serviços de cada horário</small>
+            {escolhidos.map((a) => {
+              const camp = campanhaDe(db, a.campanhaId);
+              return (
+                <div key={a.id} className="mf-row" style={{ alignItems: "flex-start", gap: 10 }}>
+                  <b style={{ minWidth: 46, paddingTop: 6 }}>{a.hora}</b>
+                  <div className="mf-grow">
+                    {camp
+                      ? <SeletorServicos db={db} camp={camp} ids={idsServicos(a)} onChange={(novos) => trocarServicos(a, camp, novos)} rotulo={`Serviços das ${a.hora}`} />
+                      : <small>{nomeServicos(db, a)}</small>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
         {url ?<img className="mf-img" src={url} alt="Prévia da imagem para stories" /> : <p className="sub" style={{ textAlign: "center" }}>Gerando imagem…</p>}

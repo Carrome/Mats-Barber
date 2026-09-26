@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { StorySheet } from "./Vagas.jsx";
 import { baseVazia } from "../dados.js";
 
@@ -69,6 +69,42 @@ describe("escolher os horários da imagem de stories", () => {
     abrir(lista.slice(0, 1));
     marcar("09:00");
     await waitFor(() => expect(horasDaUltima()).toEqual(["09:00"]));
+  });
+});
+
+describe("serviços de cada horário", () => {
+  // tela de verdade: a troca de serviço grava a oferta e a imagem é redesenhada com ela
+  let atual;
+  function Palco() {
+    const [db, setDb] = React.useState(() => ({ ...baseVazia(), agendamentos: lista.slice(0, 2).map((a) => ({ ...a })) }));
+    atual = db;
+    const update = (fn) => setDb((d) => fn(structuredClone(d)));
+    return <StorySheet db={db} update={update} notify={() => {}} data="2026-09-18" lista={db.agendamentos} onClose={() => {}} />;
+  }
+  const servicosDas = (h) => screen.getByRole("group", { name: `Serviços das ${h}` });
+
+  it("cada horário marcado ganha a escolha de serviços, e ligar a barba grava o combo na oferta", async () => {
+    render(<Palco />);
+    expect(screen.queryByRole("group", { name: "Serviços das 10:00" })).toBe(null);
+    marcar("09:00", "10:00");
+    const barba = within(servicosDas("10:00")).getByRole("button", { name: "Barba" });
+    fireEvent.click(barba);
+    // Mats Flex de exemplo: R$ 10 a menos em cada serviço (cabelo 45 → 35, barba 25 → 15)
+    const oferta = atual.agendamentos.find((a) => a.hora === "10:00");
+    expect(oferta).toMatchObject({ servicoId: "corte", valor: 35, adicionais: [{ servicoId: "barba", valor: 15 }] });
+    expect(atual.agendamentos.find((a) => a.hora === "09:00").adicionais || []).toEqual([]);
+    await waitFor(() => expect(ultima()).toContain("Cabelo + Barba"));
+    expect(ultima()).toContain("R$ 50,00");
+    expect(chip("09:00").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("trocar o cabelo pela barba muda o serviço e o preço da oferta", async () => {
+    render(<Palco />);
+    marcar("09:00");
+    fireEvent.click(within(servicosDas("09:00")).getByRole("button", { name: "Barba" }));
+    fireEvent.click(within(servicosDas("09:00")).getByRole("button", { name: "Cabelo" }));
+    expect(atual.agendamentos.find((a) => a.hora === "09:00")).toMatchObject({ servicoId: "barba", valor: 15, adicionais: [] });
+    await waitFor(() => expect(ultima()).toContain("Barba"));
   });
 });
 
