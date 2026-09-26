@@ -14,10 +14,10 @@ import { CSS } from "./estilos.js";
 import { entregarArquivo, hojeYmd } from "./util.js";
 import { avisosAjustes, pendentes } from "./regras.js";
 import {
-  abrirReal, abrirTeste, baseVazia, carregar, gravarModo, guardarCopiaAnterior, lerModo, migrar, salvar, separarTeste, STORE_KEY, TESTE_KEY,
+  abrirReal, abrirTeste, carregar, gravarModo, guardarCopiaAnterior, lerModo, salvar, separarTeste, STORE_KEY, TESTE_KEY,
 } from "./dados.js";
-import { criarNuvem, lerNuvem, sessaoAtual } from "./nuvem.js";
-import { decidirAcao, ehVazio, gravarMarca, lerMarca } from "./sincronia.js";
+import { sessaoAtual } from "./nuvem.js";
+import { useSincronia } from "./sincronizar.js";
 import { Sheet } from "./componentes.jsx";
 import { gravarOcultar, lerOcultar, Painel } from "./telas/Painel.jsx";
 import { Agenda, PendenciasSheet, SlotSheet } from "./telas/Agenda.jsx";
@@ -36,8 +36,8 @@ const NAV = [
 ];
 const ABAS = ["painel", "agenda", "vagas", "clientes", "planos", "ajustes"];
 
-// Etapa 1 em andamento. Enquanto o banco não estiver configurado (SQL rodado e
-// usuário criado), o app abre direto, com ou sem internet, e não sincroniza.
+// Tela de entrada desligada: o app abre direto, com ou sem internet, e
+// sincroniza sem login pelo código de config.js (ver sincronizar.js).
 // Trocar para true religa a tela de entrada.
 const EXIGIR_LOGIN = false;
 const clonar = (x) => (typeof structuredClone === "function" ? structuredClone(x) : JSON.parse(JSON.stringify(x)));
@@ -46,7 +46,6 @@ export default function App() {
   const [db, setDb] = useState(null);
   // null = ainda checando, false = precisa entrar, objeto = entrou
   const [sessao, setSessao] = useState(null);
-  const [escolhaMigracao, setEscolhaMigracao] = useState(null);
   const [aba, setAba] = useState(() => {
     try { const a = new URLSearchParams(window.location.search).get("aba"); return ABAS.includes(a) ? a : "painel"; }
     catch (e) { return "painel"; }
@@ -70,7 +69,6 @@ export default function App() {
   const desfazerRef = useRef(null);
   const dbRef = useRef(null);
   dbRef.current = db;
-  const reconciliado = useRef(false);
   // "real" ou "teste". Os dois lados têm armazenamento próprio (ver dados.js)
   const [modo, setModo] = useState("real");
   const modoRef = useRef("real");
@@ -111,31 +109,6 @@ export default function App() {
       window.removeEventListener("mf-nova-versao", versao);
     };
   }, []);
-
-  /* ---------- reconciliar aparelho e banco, uma única vez ----------
-     Só o uso real conversa com o banco: o modo teste nunca sobe nem baixa nada. */
-  useEffect(() => {
-    if (!sessao || !db || db.teste || db.demo || reconciliado.current) return;
-    reconciliado.current = true;
-    let vivo = true;
-    (async () => {
-      const nuvem = await lerNuvem();
-      if (!vivo || nuvem.erro) return; // leitura falhou: não decide nada, o aparelho segue com o que já tinha
-      const acao = decidirAcao({ marca: lerMarca(), local: db, nuvem });
-      if (acao === "baixar") {
-        setDb(migrar(nuvem.dados));
-        gravarMarca(nuvem.versao, "celular");
-      } else if (acao === "criar") {
-        const base = ehVazio(db) ? baseVazia() : db;
-        const r = await criarNuvem(base, "celular");
-        if (r.ok) { setDb(base); gravarMarca(r.versao, "celular"); }
-      } else if (acao === "perguntar") {
-        setEscolhaMigracao({ local: db, nuvem });
-      }
-      // "sincronizar" (já existe marca): nada a fazer aqui, é o caso de rotina tratado alhures.
-    })();
-    return () => { vivo = false; };
-  }, [sessao, db]);
 
   /* ---------- salvar (com atraso curto) e ao sair do app ---------- */
   useEffect(() => {
@@ -180,6 +153,8 @@ export default function App() {
     } else setToast(null);
   };
   const ask = useCallback((msg, sim) => setConfirmar({ msg, sim }), []);
+  // Só o uso real conversa com o banco: o modo teste nunca sobe nem baixa nada.
+  const sync = useSincronia({ db, setDb, notify });
   const substituir = useCallback((novo, msg) => {
     const atual = dbRef.current;
     if (atual) guardarCopiaAnterior(atual);
@@ -303,7 +278,7 @@ export default function App() {
         {aba === "clientes" && <Clientes {...props} />}
         {aba === "planos" && <Planos {...props} sub={subPlanos} setSub={setSubPlanos} />}
         {aba === "ajustes" && (
-          <Ajustes {...props} substituir={substituir} fazerBackup={fazerBackup} persistido={persistido} modo={modo} trocarModo={trocarModo}
+          <Ajustes {...props} substituir={substituir} fazerBackup={fazerBackup} persistido={persistido} modo={modo} trocarModo={trocarModo} sync={sync}
             instalar={instalar || (ios && !standalone ? () => notify("No iPhone: toque em Compartilhar e depois em “Adicionar à Tela de Início”") : null)} />
         )}
       </main>

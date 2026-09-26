@@ -1,7 +1,7 @@
 // Mats Flex – service worker (app shell + cache em tempo de execução)
 // A lista de arquivos (marcador ARQUIVOS) e o nome do cache são preenchidos no build pelo vite.config.js
-const CACHE = "matts-flex-1790051730915";
-const SHELL = [...new Set(["./", "./index.html", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", "./assets/react-W1izUqcL.js", "./assets/icones-nTcILsgS.js", "./assets/graficos-CIzlkYQ6.js", "./assets/index-Br9v62NP.js", "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-maskable-512.png", "./icons/logo-grande.png", "./icons/logo.png"])];
+const CACHE = "matts-flex-1790386364568";
+const SHELL = [...new Set(["./", "./index.html", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", "./assets/react-W1izUqcL.js", "./assets/icones-DI12UFNI.js", "./assets/graficos-CIzlkYQ6.js", "./assets/index-BR_mEzfd.js", "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-maskable-512.png", "./icons/logo-grande.png", "./icons/logo.png"])];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(

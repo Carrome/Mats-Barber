@@ -2,16 +2,17 @@
    Ajustes: barbearia, serviços, agenda, pausas, retorno e dados
    ===================================================================== */
 import React, { useEffect, useRef, useState } from "react";
-import { CalendarX, Coffee, Download, FlaskConical, History, Moon, Plus, RotateCcw, ShieldCheck, Smartphone, Trash2, Upload } from "lucide-react";
+import { CalendarX, Coffee, Download, FlaskConical, History, Moon, Plus, RefreshCw, RotateCcw, ShieldCheck, Smartphone, Trash2, Upload } from "lucide-react";
 import { brl, dataLonga, DIAS_CURTO, hojeYmd, PAGAMENTOS, uid, digitos } from "../util.js";
 import { avisosAjustes, horariosDe } from "../regras.js";
 import { baseVazia, criarDemo, lerCopiaAnterior, migrar } from "../dados.js";
+import { textoSync } from "../sincronia.js";
 import { Campo, NumInput, TextoBlur } from "../componentes.jsx";
 
 const ORDEM_DIAS = [1, 2, 3, 4, 5, 6, 0];
 const ordenarDias = (dias) => [...dias].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
 
-export function Ajustes({ db, update, notify, ask, substituir, instalar, fazerBackup, persistido, modo = "real", trocarModo }) {
+export function Ajustes({ db, update, notify, ask, substituir, instalar, fazerBackup, persistido, modo = "real", trocarModo, sync }) {
   const cfg = db.config;
   const arquivo = useRef(null);
   const [copia, setCopia] = useState(null);
@@ -49,7 +50,7 @@ export function Ajustes({ db, update, notify, ask, substituir, instalar, fazerBa
       {avisosAjustes(db).map((a) => a.id === "backup" && (
         <section key={a.id} className="mf-banner info" style={{ marginBottom: 0 }}>
           <ShieldCheck size={18} />
-          <span className="mf-grow">{a.texto} Os dados ficam só neste aparelho: guarde uma cópia no WhatsApp ou Drive.</span>
+          <span className="mf-grow">{a.texto} Guarde uma cópia no WhatsApp ou Drive.</span>
           <button className="mf-btn sm" onClick={fazerBackup}><Download size={15} />Fazer backup</button>
         </section>
       ))}
@@ -199,9 +200,10 @@ export function Ajustes({ db, update, notify, ask, substituir, instalar, fazerBa
       <section className="mf-panel mf-stack">
         <h3>Dados</h3>
         <p className="sub">
-          Os dados ficam guardados só neste aparelho. Baixe um backup de vez em quando e mande para o seu WhatsApp ou Drive.
+          Os dados ficam iguais nos celulares da barbearia, sozinhos. Mesmo assim, baixe um backup de vez em quando e mande para o seu WhatsApp ou Drive.
           {cfg.ultimoBackup ? ` Último backup: ${new Date(cfg.ultimoBackup).toLocaleDateString("pt-BR")}.` : " Nenhum backup feito ainda."}
         </p>
+        {sync && <small><RefreshCw size={14} style={{ verticalAlign: -2 }} /> {textoSync(sync)}</small>}
         {persistido !== null && (
           <small style={{ color: persistido ? "var(--ok-tx)" : "var(--latao-tx)" }}>
             <ShieldCheck size={14} style={{ verticalAlign: -2 }} /> {persistido ? "Armazenamento protegido: o navegador não apaga os dados sozinho." : "O navegador pode limpar os dados se faltar espaço. Instalar o app na tela inicial ajuda a proteger."}

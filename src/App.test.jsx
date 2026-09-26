@@ -7,12 +7,13 @@ import App from "./App.jsx";
 vi.mock("./nuvem.js", () => ({
   sessaoAtual: vi.fn(),
   lerNuvem: vi.fn(),
+  versaoNuvem: vi.fn(),
   criarNuvem: vi.fn(),
   gravarNuvem: vi.fn(),
   entrar: vi.fn(),
   sair: vi.fn(),
 }));
-import { criarNuvem, lerNuvem, sessaoAtual } from "./nuvem.js";
+import { criarNuvem, gravarNuvem, lerNuvem, sessaoAtual, versaoNuvem } from "./nuvem.js";
 
 beforeEach(() => {
   const m = new Map();
@@ -20,11 +21,12 @@ beforeEach(() => {
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal("matchMedia", (q) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
   vi.clearAllMocks();
-  // Padrão para os testes que não são sobre o portão em si: sessão já
-  // guardada no aparelho e leitura do banco sem resposta (sem rede). Assim
-  // nenhum teste alheio ao login acorda a reconciliação sem querer.
-  sessaoAtual.mockResolvedValue({ user: { id: "u1" } });
+  // Padrão: banco sem resposta (sem rede). A sincronização tenta, não decide
+  // nada e o app segue com o que está no aparelho. Assim nenhum teste alheio
+  // à sincronização mexe no banco sem querer.
+  sessaoAtual.mockResolvedValue(null);
   lerNuvem.mockResolvedValue({ existe: false, versao: null, dados: null, erro: "Sem conexão com a internet." });
+  versaoNuvem.mockResolvedValue({ versao: null, erro: "Sem conexão com a internet." });
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -135,16 +137,16 @@ describe("portão de login e carga inicial", () => {
     expect(screen.queryByRole("button", { name: /entrar/i })).toBe(null);
   });
 
-  it("com sessão e dados reais no aparelho, abre o app mesmo se a leitura do banco falhar", async () => {
+  it("sem sessão e com dados reais, fala com o banco sem login e abre mesmo se a leitura falhar", async () => {
     const { baseVazia, MODO_KEY, STORE_KEY } = await import("./dados.js");
     const db = baseVazia();
     db.clientes = [{ id: "c1", nome: "Ana" }];
     localStorage.setItem(STORE_KEY, JSON.stringify(db));
     localStorage.setItem(MODO_KEY, "real"); // aparelho que já passou pela separação do modo teste
-    // sessaoAtual e lerNuvem seguem o padrão do beforeEach: sessão presente, leitura com erro de rede.
+    // sessaoAtual e lerNuvem seguem o padrão do beforeEach: sem sessão, leitura com erro de rede.
     render(<App />);
     await waitFor(() => expect(screen.getByRole("banner")).toBeTruthy());
-    // a reconciliação tentou falar com o banco, mas o erro de leitura barrou qualquer decisão
+    // a sincronização tentou falar com o banco, mas o erro de leitura barrou qualquer decisão
     await waitFor(() => expect(lerNuvem).toHaveBeenCalled());
     expect(criarNuvem).not.toHaveBeenCalled();
   });
@@ -155,8 +157,19 @@ describe("portão de login e carga inicial", () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText(/Modo teste./)).toBeTruthy());
     await new Promise((r) => setTimeout(r, 0)); // dá chance a qualquer efeito pendente rodar
-    expect(lerNuvem).not.toHaveBeenCalled();
-    expect(criarNuvem).not.toHaveBeenCalled();
+    for (const f of [lerNuvem, versaoNuvem, criarNuvem, gravarNuvem]) expect(f).not.toHaveBeenCalled();
+  });
+
+  it("Ajustes mostra o estado da sincronização", async () => {
+    const { baseVazia, MODO_KEY, STORE_KEY } = await import("./dados.js");
+    const db = baseVazia();
+    db.clientes = [{ id: "c1", nome: "Ana" }];
+    localStorage.setItem(STORE_KEY, JSON.stringify(db));
+    localStorage.setItem(MODO_KEY, "real");
+    render(<App />);
+    fireEvent.click(within(await screen.findByRole("banner")).getByRole("button", { name: /^Ajustes/ }));
+    expect(await screen.findByText(/Sem conexão\. As alterações são enviadas quando a internet voltar\./)).toBeTruthy();
+    expect(screen.queryByText(/ficam guardados só neste aparelho/)).toBe(null);
   });
 });
 
