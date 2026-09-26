@@ -31,9 +31,11 @@ perda de dados continuam valendo; a de privacidade fica para quando o login volt
 
 - `barbearia.dono` deixa de ser obrigatório. Nada da parte de login é apagado.
 - Coluna `unica boolean default true` com índice único: a tabela tem no máximo uma linha.
-- `barbearia_historico`: o gatilho de versão passa a copiar a linha antiga para lá a
-  cada alteração e mantém só as últimas 30. RLS ligado e sem políticas: só as funções
-  enxergam.
+- `barbearia_historico`: o gatilho de versão passa a copiar a linha antiga para lá
+  quando o aparelho que grava muda, ou quando a última cópia tem mais de 10 minutos, e
+  mantém as 60 mais recentes. Assim o lado que perde na primeira conexão não é
+  empurrado para fora do histórico por uma sequência de gravações do mesmo aparelho.
+  RLS ligado e sem políticas: só as funções enxergam.
 - A tabela continua fechada para acesso direto (as políticas antigas exigem sessão).
   O app fala só por quatro funções `security definer`, que conferem o código pelo
   `sha256` antes de qualquer coisa:
