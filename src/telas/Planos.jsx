@@ -5,7 +5,7 @@ import React, { useState } from "react";
 import { CalendarPlus, MessageCircle, Pencil, Plus, Ticket } from "lucide-react";
 import { brl, ddmm, ddmmaa, hojeYmd, plural, primeiroNome, r2, soma, uid, whats, addDays, parse, ymd } from "../util.js";
 import {
-  campanhaVale, clienteDe, infoPacote, precoCampanha, precoPlano, rotuloDesconto, rotuloPagamento, servicoDe, TOM_STATUS, venceEm,
+  campanhaCobre, campanhaVale, clienteDe, infoPacote, precoCampanha, precoPlano, rotuloDesconto, rotuloPagamento, servicoDe, TOM_STATUS, venceEm,
 } from "../regras.js";
 import { montarPacote } from "../dados.js";
 import { BarraSaldo, Campo, ClientePicker, FormaPagamento, NumInput, Seg, Sheet, Tag } from "../componentes.jsx";
@@ -67,17 +67,18 @@ export function Planos({ db, update, notify, ask, abrir, sub, setSub }) {
           {db.campanhas.map((c) => {
             const vendas = db.agendamentos.filter((a) => a.campanhaId === c.id && (a.tipo === "campanha" || (a.tipo === "pacote" && a.deOferta)));
             const vigente = campanhaVale(c, hoje);
-            const exemplo = db.servicos[0];
+            const exemplo = db.servicos.find((s) => campanhaCobre(c, s.id)) || db.servicos[0];
+            const porServico = c.descontoTipo === "porServico";
             return (
               <section key={c.id} className="mf-panel mf-stack" style={{ gap: 10 }}>
                 <div className="mf-row mf-between">
-                  <div><h2>{c.nome}</h2><small>{c.tipo === "vaga" ? "Desconto em horário vago" : `Desconto em ${c.servicoIds?.length ? c.servicoIds.map((id) => servicoDe(db, id)?.nome).filter(Boolean).join(", ") : "todos os serviços"}`}</small></div>
+                  <div><h2>{c.nome}</h2><small>{c.tipo === "vaga" ? "Desconto em horário vago" : porServico ? "Desconto nos serviços da agenda" : `Desconto em ${c.servicoIds?.length ? c.servicoIds.map((id) => servicoDe(db, id)?.nome).filter(Boolean).join(", ") : "todos os serviços"}`}</small></div>
                   <Tag tom={vigente ? "ok" : "neutro"}>{vigente ? "Ativa" : c.ativa ? "Fora do período" : "Pausada"}</Tag>
                 </div>
                 {c.descricao && <p>{c.descricao}</p>}
                 <div className="mf-row mf-wrapr" style={{ alignItems: "baseline", gap: 10 }}>
-                  <span className="mf-price" style={{ color: "var(--poste-tx)" }}>{rotuloDesconto(c)}</span>
-                  {exemplo && <small>{exemplo.nome}: {brl(exemplo.preco)} → {brl(precoCampanha(c, exemplo.preco))}</small>}
+                  <span className={porServico ? "" : "mf-price"} style={{ color: "var(--poste-tx)", fontWeight: 700 }}>{rotuloDesconto(c, db)}</span>
+                  {exemplo && !porServico && <small>{exemplo.nome}: {brl(exemplo.preco)} → {brl(precoCampanha(c, exemplo.preco, exemplo.id))}</small>}
                 </div>
                 <small>{c.inicio ? `de ${ddmmaa(c.inicio)}` : "sem início definido"}{c.fim ? ` até ${ddmmaa(c.fim)}` : ", sem data para acabar"}</small>
                 <div className="mf-sep" style={{ margin: "2px 0" }} />
@@ -194,18 +195,22 @@ function PlanoForm({ db, update, notify, ask, plano, onClose }) {
 }
 
 function CampanhaForm({ db, update, notify, ask, camp, onClose }) {
-  const [f, setF] = useState({ nome: "", tipo: "vaga", descontoTipo: "pct", descontoPct: 20, descontoValor: 10, servicoIds: [], inicio: hojeYmd(), fim: "", ativa: true, descricao: "", ...camp });
+  const [f, setF] = useState({ nome: "", tipo: "vaga", descontoTipo: "pct", descontoPct: 20, descontoValor: 10, descontos: {}, servicoIds: [], inicio: hojeYmd(), fim: "", ativa: true, descricao: "", ...camp });
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
   const setN = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
+  const setDesc = (id) => (v) => setF((x) => ({ ...x, descontos: { ...x.descontos, [id]: v } }));
   const pct = Number(f.descontoPct) || 0;
   const val = Number(f.descontoValor) || 0;
-  const descontoOk = f.descontoTipo === "pct" ? pct > 0 && pct < 100 : val > 0;
+  const porServico = f.descontoTipo === "porServico";
+  // só os serviços com desconto de verdade ficam gravados
+  const descontos = Object.fromEntries(Object.entries(f.descontos || {}).filter(([, v]) => Number(v) > 0).map(([id, v]) => [id, r2(v)]));
+  const descontoOk = porServico ? Object.keys(descontos).length > 0 : f.descontoTipo === "pct" ? pct > 0 && pct < 100 : val > 0;
   const ok = f.nome.trim() && descontoOk && (!f.fim || !f.inicio || f.fim >= f.inicio);
   const usada = camp.id && db.agendamentos.some((a) => a.campanhaId === camp.id);
   const toggleServ = (id) => setF({ ...f, servicoIds: f.servicoIds.includes(id) ? f.servicoIds.filter((x) => x !== id) : [...f.servicoIds, id] });
-  const previa = { ...f, descontoPct: pct, descontoValor: val };
+  const previa = { ...f, descontoPct: pct, descontoValor: val, descontos };
   const salvarC = () => {
-    const dados = { ...f, nome: f.nome.trim(), descontoPct: pct, descontoValor: r2(val) };
+    const dados = { ...f, nome: f.nome.trim(), descontoPct: pct, descontoValor: r2(val), descontos };
     update((d) => {
       const x = camp.id && d.campanhas.find((c) => c.id === camp.id);
       if (x) Object.assign(x, dados);
@@ -215,7 +220,7 @@ function CampanhaForm({ db, update, notify, ask, camp, onClose }) {
     notify(camp.id ? "Campanha atualizada" : "Campanha criada");
     onClose();
   };
-  const servsPrevia = f.tipo === "servico" && f.servicoIds.length ? db.servicos.filter((s) => f.servicoIds.includes(s.id)) : db.servicos;
+  const servsPrevia = porServico || (f.tipo === "servico" && f.servicoIds.length) ? db.servicos.filter((s) => campanhaCobre(previa, s.id)) : db.servicos;
   return (
     <Sheet titulo={camp.id ? "Editar campanha" : "Nova campanha"} onClose={onClose}>
       <div className="mf-stack">
@@ -224,7 +229,7 @@ function CampanhaForm({ db, update, notify, ask, camp, onClose }) {
           <Seg valor={f.tipo} onChange={(v) => setF({ ...f, tipo: v })} opcoes={[["vaga", "Horários vagos"], ["servico", "Serviços na agenda"]]} />
         </Campo>
         <p className="sub">{f.tipo === "vaga" ? "Você escolhe quais horários vagos ofertar. Eles aparecem listrados na agenda até alguém comprar." : "O desconto pode ser escolhido na hora de agendar qualquer cliente, nos serviços marcados abaixo."}</p>
-        {f.tipo === "servico" && (
+        {f.tipo === "servico" && !porServico && (
           <Campo label="Serviços com desconto" dica="Nenhum marcado = vale para todos.">
             <div className="mf-chips">
               {db.servicos.map((s) => <button key={s.id} type="button" className={"mf-chip" + (f.servicoIds.includes(s.id) ? " on" : "")} onClick={() => toggleServ(s.id)}>{s.nome}</button>)}
@@ -232,10 +237,22 @@ function CampanhaForm({ db, update, notify, ask, camp, onClose }) {
           </Campo>
         )}
         <Campo label="Tipo de desconto">
-          <Seg valor={f.descontoTipo} onChange={(v) => setF({ ...f, descontoTipo: v })} opcoes={[["pct", "Porcentagem"], ["valor", "R$ a menos"], ["preco", "Preço fixo"]]} />
+          <Seg valor={f.descontoTipo} onChange={(v) => setF({ ...f, descontoTipo: v })} opcoes={[["pct", "Porcentagem"], ["valor", "R$ a menos"], ["preco", "Preço fixo"], ["porServico", "Por serviço"]]} />
         </Campo>
+        {porServico && (
+          <Campo label="Desconto em cada serviço (R$)" dica="Em branco ou 0 = sem desconto. Um serviço sem desconto ainda pode entrar numa oferta pelo preço cheio.">
+            <div className="mf-stack" style={{ gap: 6 }}>
+              {db.servicos.map((s) => (
+                <div key={s.id} className="mf-row mf-between">
+                  <span className="mf-grow">{s.nome} <small className="mf-muted">({brl(s.preco)})</small></span>
+                  <NumInput style={{ maxWidth: 110 }} value={f.descontos?.[s.id] ?? null} onChange={setDesc(s.id)} min={0} placeholder="0" aria-label={`Desconto em ${s.nome}`} />
+                </div>
+              ))}
+            </div>
+          </Campo>
+        )}
         <div className="mf-g-3-fixo">
-          {f.descontoTipo === "pct"
+          {porServico ? null : f.descontoTipo === "pct"
             ? <Campo label="Desconto (%)"><NumInput value={f.descontoPct} onChange={setN("descontoPct")} min={1} max={99} inteiro /></Campo>
             : <Campo label={f.descontoTipo === "valor" ? "Desconto (R$)" : "Preço (R$)"}><NumInput value={f.descontoValor} onChange={setN("descontoValor")} min={0} /></Campo>}
           <Campo label="Começa em"><input className="mf-input" type="date" value={f.inicio} onChange={set("inicio")} /></Campo>
@@ -245,7 +262,7 @@ function CampanhaForm({ db, update, notify, ask, camp, onClose }) {
         <div className="mf-panel" style={{ padding: 12 }}>
           <small>Como fica o preço:</small>
           <div className="mf-ledger">
-            {servsPrevia.map((s) => <div key={s.id}><span>{s.nome}</span><span><span className="mf-strike">{brl(s.preco)}</span> <b style={{ fontSize: 18 }}>{brl(precoCampanha(previa, s.preco))}</b></span></div>)}
+            {servsPrevia.map((s) => <div key={s.id}><span>{s.nome}</span><span><span className="mf-strike">{brl(s.preco)}</span> <b style={{ fontSize: 18 }}>{brl(precoCampanha(previa, s.preco, s.id))}</b></span></div>)}
           </div>
         </div>
         <Campo label="Descrição"><textarea className="mf-input" rows={2} value={f.descricao} onChange={set("descricao")} /></Campo>

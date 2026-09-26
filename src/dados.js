@@ -162,7 +162,7 @@ export function migrar(d) {
     }
     cfg.pausas = cfg.pausas.map((p) => ({ ...p, ativa: /almo/i.test(p.motivo || "") ? false : p.ativa ?? true }));
   }
-  out.campanhas = out.campanhas.map((c) => ({ servicoIds: [], descontoTipo: "pct", descontoValor: 0, descontoPct: 0, descricao: "", ...c }));
+  out.campanhas = out.campanhas.map((c) => ({ servicoIds: [], descontoTipo: "pct", descontoValor: 0, descontoPct: 0, descontos: {}, descricao: "", ...c }));
   out.planos = out.planos.map((p) => ({ somenteVagas: false, descricao: "", ...p }));
   out.clientes = out.clientes.map((c) => ({ telefone: "", obs: "", aniversario: "", indicadoPor: "", ...c }));
   // a barbearia só aceita Pix e Dinheiro: registros antigos de cartão viram Dinheiro

@@ -71,7 +71,7 @@ export function Vagas({ db, update, notify }) {
         <Campo label="Campanha">
           {campanhas.length === 0 ? <small>Nenhuma campanha de horário vago ativa. Crie uma em Planos &gt; Campanhas.</small> : (
             <select className="mf-input" value={camp?.id} onChange={(e) => setCampId(e.target.value)}>
-              {campanhas.map((c) => <option key={c.id} value={c.id}>{c.nome} ({rotuloDesconto(c)})</option>)}
+              {campanhas.map((c) => <option key={c.id} value={c.id}>{c.nome} ({rotuloDesconto(c, db)})</option>)}
             </select>
           )}
         </Campo>

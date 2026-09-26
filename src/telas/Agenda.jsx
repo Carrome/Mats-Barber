@@ -407,7 +407,7 @@ function NovoNoHorario({ db, update, notify, data, hora, onClose }) {
             {campsServ.length === 0 ? <small>Nenhuma campanha ativa para este serviço. Crie uma em Planos.</small> : (
               <select className="mf-input" value={campServ} onChange={(e) => setCampServ(e.target.value)}>
                 <option value="">Escolha…</option>
-                {campsServ.map((c) => <option key={c.id} value={c.id}>{c.nome} ({rotuloDesconto(c)})</option>)}
+                {campsServ.map((c) => <option key={c.id} value={c.id}>{c.nome} ({rotuloDesconto(c, db)})</option>)}
               </select>
             )}
           </Campo>
@@ -432,7 +432,7 @@ function NovoNoHorario({ db, update, notify, data, hora, onClose }) {
         <Campo label="Campanha de vaga">
           {vagas.length === 0 ? <small>Nenhuma campanha de horário vago ativa. Crie uma em Planos.</small> : (
             <select className="mf-input" value={campVaga} onChange={(e) => setCampVaga(e.target.value)}>
-              {vagas.map((c) => <option key={c.id} value={c.id}>{c.nome} ({rotuloDesconto(c)})</option>)}
+              {vagas.map((c) => <option key={c.id} value={c.id}>{c.nome} ({rotuloDesconto(c, db)})</option>)}
             </select>
           )}
         </Campo>
