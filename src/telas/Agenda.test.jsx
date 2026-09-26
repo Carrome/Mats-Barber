@@ -249,3 +249,45 @@ describe("oferta com mais de um serviço", () => {
     expect(fn(structuredClone(db)).agendamentos[0]).toMatchObject({ tipo: "oferta", clienteId: null, valor: 30, adicionais: combo.adicionais });
   });
 });
+
+describe("pagar depois", () => {
+  const dbFeito = (extra = {}) => {
+    const db = baseVazia();
+    db.clientes.push({ id: "c1", nome: "João Silva", telefone: "(22) 99999-0000" });
+    db.agendamentos.push({ id: "a1", data: "2026-09-25", hora: "10:00", tipo: "avulso", clienteId: "c1", servicoId: "corte", valor: 45, status: "concluido", pagamento: "Pix", emDinheiro: 0, obs: "", ...extra });
+    return db;
+  };
+  const abrirSlot = (db) => {
+    const props = { db, update: vi.fn(), notify: vi.fn(), ask: vi.fn(), abrir: { cliente: vi.fn() }, onClose: vi.fn() };
+    render(<SlotSheet {...props} data="2026-09-25" hora="10:00" />);
+    return props;
+  };
+
+  it("ao concluir, Pagar depois abre a janela de cobrança", () => {
+    abrirSlot(dbFeito());
+    fireEvent.click(screen.getByRole("button", { name: "Pagar depois" }));
+    expect(screen.getByText("Cobrar depois")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Salvar lembrete/ })).toBeTruthy();
+  });
+
+  it("a receber: mostra o lembrete, e marcar Pix conta como recebido hoje", async () => {
+    const { A_RECEBER } = await import("../regras.js");
+    const { hojeYmd } = await import("../util.js");
+    const p = abrirSlot(dbFeito({ pagamento: A_RECEBER, lembrete: { data: "2026-09-25", hora: "20:00" } }));
+    expect(screen.getByText(/A receber\. Lembrete/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Pix" }));
+    const [fn] = p.update.mock.calls[0];
+    expect(fn(dbFeito({ pagamento: A_RECEBER })).agendamentos[0]).toMatchObject({ pagamento: "Pix", pagoEm: hojeYmd(), lembrete: null });
+  });
+
+  it("no fechamento em lote, Pagar depois deixa a receber com lembrete amanhã às 9:00", async () => {
+    const { A_RECEBER, lembreteRapido } = await import("../regras.js");
+    const db = dbFeito({ data: "2020-01-02", status: "agendado", pagamento: "" });
+    const update = vi.fn();
+    render(<PendenciasSheet db={db} update={update} notify={vi.fn()} ask={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Forma de pagamento"), { target: { value: A_RECEBER } });
+    fireEvent.click(screen.getByRole("button", { name: /Feito/ }));
+    const ag = update.mock.calls[0][0](structuredClone(db)).agendamentos[0];
+    expect(ag).toMatchObject({ status: "concluido", pagamento: A_RECEBER, lembrete: lembreteRapido("amanha") });
+  });
+});

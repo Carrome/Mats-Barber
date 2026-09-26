@@ -22,10 +22,11 @@ const gravar = (update, id, patch) => update((d) => {
   return d;
 });
 
-// Abre o WhatsApp do cliente com a mensagem de cobrança. Sem telefone, só avisa.
-function BotaoCobrar({ db, a, rotulo, onCobrar, className = "mf-btn sm" }) {
+// Abre o WhatsApp do cliente com a mensagem de cobrança. Sem telefone, só avisa
+// (curto na lista e na faixa, para não espremer o nome).
+function BotaoCobrar({ db, a, rotulo, onCobrar, className = "mf-btn sm", curto }) {
   const c = clienteDe(db, a.clienteId);
-  if (!c?.telefone) return <small className="mf-muted">Cadastre o WhatsApp do cliente para cobrar por lá.</small>;
+  if (!c?.telefone) return <small className="mf-muted" style={curto ? { whiteSpace: "nowrap" } : undefined}>{curto ? "Sem WhatsApp" : "Cadastre o WhatsApp do cliente para cobrar por lá."}</small>;
   return (
     <a className={className} href={whats(c.telefone, msgCobranca(db, a), db.config.ddd)} target="_blank" rel="noreferrer" onClick={onCobrar}>
       <MessageCircle size={14} />{rotulo}
@@ -119,7 +120,7 @@ export function ListaAReceber({ db, update, notify, agora = new Date() }) {
               <small>{nomeServicos(db, a)} · {ddmm(a.data)} · </small>
               <small style={vencidas.has(a.id) ? { color: "var(--poste-tx)", fontWeight: 700 } : undefined}><Clock size={12} style={{ verticalAlign: -1 }} /> {quandoLembrar(a.lembrete)}</small>
             </button>
-            <BotaoCobrar db={db} a={a} rotulo="Cobrar" onCobrar={() => gravar(update, a.id, { cobradoEm: new Date().toISOString() })} />
+            <BotaoCobrar db={db} a={a} rotulo="Cobrar" curto onCobrar={() => gravar(update, a.id, { cobradoEm: new Date().toISOString() })} />
             <button type="button" className="mf-btn sm alt" onClick={() => setReceber(a)}>Recebi</button>
           </div>
         );
@@ -161,7 +162,7 @@ export function AvisoCobranca({ db, update, notify, agora = new Date(), onVerLis
       <BellRing size={18} />
       <span className="mf-grow"><b>Hora de cobrar {c?.nome || "cliente"}</b>: {brl(valorACobrar(a))}</span>
       <div className="mf-row mf-wrapr" style={{ gap: 6 }}>
-        <BotaoCobrar db={db} a={a} rotulo="WhatsApp" onCobrar={() => gravar(update, a.id, { cobradoEm: ja().toISOString() })} />
+        <BotaoCobrar db={db} a={a} rotulo="WhatsApp" curto onCobrar={() => gravar(update, a.id, { cobradoEm: ja().toISOString() })} />
         <button type="button" className="mf-btn sm alt" onClick={() => setReceber(a)}>Recebi</button>
         <button type="button" className="mf-btn sm alt" onClick={() => adiar("1h")}>+1 hora</button>
         <button type="button" className="mf-btn sm alt" onClick={() => adiar("amanha")}>Amanhã</button>

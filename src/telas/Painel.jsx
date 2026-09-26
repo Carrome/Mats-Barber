@@ -15,6 +15,7 @@ import {
 } from "../regras.js";
 import { useAgora, Seg } from "../componentes.jsx";
 import { Rosca } from "./Rosca.jsx";
+import { ListaAReceber } from "./Cobranca.jsx";
 
 const TITULO_FATURAMENTO = { hoje: "Faturamento de hoje", semana: "Faturamento da semana", mes: "Faturamento do mês até agora", mesAnterior: "Faturamento do mês" };
 const ROTULO_META = { hoje: "meta do dia", semana: "meta da semana", mes: "meta", mesAnterior: "meta" };
@@ -27,7 +28,7 @@ export const lerOcultar = () => { try { return localStorage.getItem(CHAVE_OCULTA
 export const gravarOcultar = (v) => { try { localStorage.setItem(CHAVE_OCULTAR, v ? "1" : "0"); } catch (e) { /* sem armazenamento: vale só agora */ } };
 const OCULTO = "R$ *****";
 
-export function Painel({ db, notify, abrir, ocultar, alternarOcultar }) {
+export function Painel({ db, update, notify, abrir, ocultar, alternarOcultar }) {
   const agora = useAgora();
   const [periodo, setPeriodo] = useState("hoje");
   const dinheiro = ocultar ? () => OCULTO : brl;
@@ -99,6 +100,8 @@ export function Painel({ db, notify, abrir, ocultar, alternarOcultar }) {
           {ocultar ? <EyeOff size={22} /> : <Eye size={22} />}
         </button>
       </div>
+
+      <ListaAReceber db={db} update={update} notify={notify} agora={agora} />
 
       <div className="mf-grid mf-g2">
           <section className="mf-panel mf-stack" style={{ gap: 10 }}>
@@ -193,13 +196,14 @@ export function Painel({ db, notify, abrir, ocultar, alternarOcultar }) {
             {Object.entries(f.porPagamento).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
               <div key={k}>
                 <span>{k}</span>
-                <span className="trilho"><i style={{ width: `${(v / totalPag) * 100}%`, background: k === "Não informado" ? "#BDBDBD" : undefined }} /></span>
+                <span className="trilho"><i style={{ width: `${(v / totalPag) * 100}%`, background: k === "Não informado" || k === "A receber" ? "#BDBDBD" : undefined }} /></span>
                 <b>{dinheiro(v)}</b>
               </div>
             ))}
           </div>
         )}
         {f.porPagamento["Não informado"] > 0 && <small style={{ display: "block", marginTop: 8 }}>“Não informado” são atendimentos concluídos sem a forma de pagamento marcada.</small>}
+        {f.porPagamento["A receber"] > 0 && <small style={{ display: "block", marginTop: 8 }}>“A receber” são atendimentos feitos que o cliente vai pagar depois.</small>}
       </section>
     </div>
   );

@@ -4,14 +4,15 @@
    ===================================================================== */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, CalendarClock, CalendarX, Check, ChevronLeft, ChevronRight, Clock, Coffee, MessageCircle, Plus, Repeat, X,
+  AlertTriangle, BellRing, CalendarClock, CalendarX, Check, ChevronLeft, ChevronRight, Clock, Coffee, MessageCircle, Plus, Repeat, X,
 } from "lucide-react";
+import { CobrarDepoisSheet, quandoLembrar } from "./Cobranca.jsx";
 import {
   addDays, brl, cap, dataLonga, DIAS_CURTO, DIAS_LONGO, ddmm, diasDaSemana, horaValida, hojeYmd, inicioMes, momento,
   nomeMes, PAGAMENTOS, parse, primeiroNome, r2, segundaDe, semanasDoMes, soma, uid, whats, ymd, iniciais, plural,
 } from "../util.js";
 import {
-  adicionaisDe, atendeNoDia, campanhaCobre, campanhaDe, campanhaVale, cheioDe, clienteDe, diaFechado, DIVIDIDO, gradeDoDia, horasDoDia, horasLivresNoDia, mapaAgenda,
+  A_RECEBER, adicionaisDe, atendeNoDia, campanhaCobre, campanhaDe, lembreteRapido, campanhaVale, cheioDe, clienteDe, diaFechado, DIVIDIDO, gradeDoDia, horasDoDia, horasLivresNoDia, mapaAgenda,
   montarOferta, nomeServicos, pacoteDe, pacotesUsaveis, pausaDoDia, pendentes, precoCampanha, primeiroCoberto, rotuloDesconto, servicoDe, TIPOS_ATENDIMENTO,
   totalOferta, valorAdicionais,
 } from "../regras.js";
@@ -494,6 +495,7 @@ function DetalheAgendamento({ db, update, notify, ask, abrir, ag, onClose }) {
   const [comoPagou, setComoPagou] = useState("oferta");
   const [pacoteId, setPacoteId] = useState(null);
   const [remarcar, setRemarcar] = useState(false);
+  const [cobrar, setCobrar] = useState(false);
   const cfg = db.config;
   const cli = ag.clienteId && clienteDe(db, ag.clienteId);
   const serv = servicoDe(db, ag.servicoId);
@@ -609,9 +611,19 @@ function DetalheAgendamento({ db, update, notify, ask, abrir, ag, onClose }) {
       {passou && ag.status === "agendado" && <small style={{ color: "var(--latao-tx)" }}>O horário já passou. Marque se foi concluído ou se o cliente faltou.</small>}
       {cobra && ag.status === "concluido" && (
         <Campo label="Pagamento">
-          <FormaPagamento pagamento={ag.pagamento} emDinheiro={ag.emDinheiro} total={totalNaHora(ag)} onChange={mudar} />
+          {/* estava a receber e chegou o pagamento: conta como recebido hoje e o lembrete some */}
+          <FormaPagamento pagamento={ag.pagamento} emDinheiro={ag.emDinheiro} total={totalNaHora(ag)}
+            onChange={(p) => mudar(ag.pagamento === A_RECEBER ? { ...p, pagoEm: hojeYmd(), lembrete: null } : p)} onDepois={() => setCobrar(true)} />
         </Campo>
       )}
+      {cobra && ag.status === "concluido" && ag.pagamento === A_RECEBER && (
+        <div className="mf-banner" style={{ marginBottom: 0 }}>
+          <BellRing size={18} />
+          <span className="mf-grow">A receber. Lembrete {quandoLembrar(ag.lembrete)}. Quando o cliente pagar, marque a forma acima.</span>
+          <button type="button" className="mf-btn sm alt" onClick={() => setCobrar(true)}>Mudar lembrete</button>
+        </div>
+      )}
+      {cobrar && <CobrarDepoisSheet db={db} update={update} notify={notify} ag={ag} onClose={() => setCobrar(false)} />}
       {ag.tipo === "pacote" && ag.status === "faltou" && <small>Falta em horário de pacote conta como corte usado.</small>}
       <Campo label="Observação"><TextoBlur className="mf-input" value={ag.obs} onCommit={(v) => mudar({ obs: v })} placeholder="Ex.: pediu para aparar a sobrancelha" /></Campo>
       <div className="mf-row">
@@ -833,7 +845,12 @@ export function PendenciasSheet({ db, update, notify, ask, onClose }) {
   const [pags, setPags] = useState({});
   const [dins, setDins] = useState({});
   const pagDe = (a) => pags[a.id] ?? cfg.pagamentoPadrao ?? "Pix";
-  const aplicarPagamento = (x) => { x.pagamento = pagDe(x); x.emDinheiro = x.pagamento === DIVIDIDO ? dins[x.id] ?? 0 : 0; };
+  const aplicarPagamento = (x) => {
+    x.pagamento = pagDe(x);
+    x.emDinheiro = x.pagamento === DIVIDIDO ? dins[x.id] ?? 0 : 0;
+    // pagar depois no lote: lembra amanhã cedo, e dá para mudar na lista A receber
+    if (x.pagamento === A_RECEBER) { x.lembrete = lembreteRapido("amanha"); x.cobradoEm = null; }
+  };
   const fecharUm = (a, status) => {
     update((d) => {
       const x = d.agendamentos.find((y) => y.id === a.id);
@@ -860,7 +877,7 @@ export function PendenciasSheet({ db, update, notify, ask, onClose }) {
                     <span className="quem"><b className="mf-ellip" style={{ display: "block" }}>{c?.nome || "Cliente"}</b><small>{nomeServicos(db, a)} · {a.tipo !== "pacote" ? brl(totalNaHora(a)) : valorAdicionais(a) ? `pacote + ${brl(valorAdicionais(a))}` : "pacote"}</small></span>
                     {pagaAgora(a) && (
                       <select className="mf-input" style={{ width: "auto", padding: "6px 8px", fontSize: 14 }} value={pagDe(a)} onChange={(e) => setPags({ ...pags, [a.id]: e.target.value })} aria-label="Forma de pagamento">
-                        {[...PAGAMENTOS, DIVIDIDO].map((p) => <option key={p}>{p}</option>)}
+                        {[...PAGAMENTOS, DIVIDIDO, A_RECEBER].map((p) => <option key={p} value={p}>{p === A_RECEBER ? "Pagar depois" : p}</option>)}
                       </select>
                     )}
                     <button className="mf-btn sm" onClick={() => fecharUm(a, "concluido")}><Check size={14} />Feito</button>

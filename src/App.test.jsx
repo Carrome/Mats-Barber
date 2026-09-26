@@ -228,3 +228,22 @@ describe("modo teste", () => {
     expect(screen.queryByRole("button", { name: /Restaurar backup/ })).toBe(null);
   });
 });
+
+describe("aviso de cobrança", () => {
+  it("com um pagar depois vencido, a faixa aparece em qualquer tela", async () => {
+    const { baseVazia, MODO_KEY, STORE_KEY } = await import("./dados.js");
+    const { A_RECEBER } = await import("./regras.js");
+    const db = baseVazia();
+    db.clientes = [{ id: "c1", nome: "João Silva", telefone: "(22) 99999-0000" }];
+    db.agendamentos = [{ id: "a1", data: "2020-01-02", hora: "10:00", tipo: "avulso", clienteId: "c1", servicoId: "corte", valor: 45, status: "concluido",
+      pagamento: A_RECEBER, emDinheiro: 0, obs: "", lembrete: { data: "2020-01-02", hora: "20:00" } }];
+    localStorage.setItem(STORE_KEY, JSON.stringify(db));
+    localStorage.setItem(MODO_KEY, "real");
+    render(<App />);
+    expect(await screen.findByText(/Hora de cobrar João Silva/)).toBeTruthy();
+    // e a lista no Painel
+    expect(screen.getByText(/A receber \(1\)/)).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: /^Agenda/ })[0]);
+    expect(screen.getByText(/Hora de cobrar João Silva/)).toBeTruthy();
+  });
+});

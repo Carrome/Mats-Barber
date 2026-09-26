@@ -12,13 +12,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { CalendarDays, Eye, EyeOff, FlaskConical, LayoutDashboard, RefreshCw, Settings, Sparkles, Ticket, Users, AlertTriangle } from "lucide-react";
 import { CSS } from "./estilos.js";
 import { entregarArquivo, hojeYmd } from "./util.js";
-import { avisosAjustes, pendentes } from "./regras.js";
+import { avisosAjustes, cobrancasVencidas, pendentes } from "./regras.js";
 import {
   abrirReal, abrirTeste, carregar, gravarModo, guardarCopiaAnterior, lerModo, salvar, separarTeste, STORE_KEY, TESTE_KEY,
 } from "./dados.js";
 import { sessaoAtual } from "./nuvem.js";
 import { useSincronia } from "./sincronizar.js";
-import { Sheet } from "./componentes.jsx";
+import { Sheet, useAgora } from "./componentes.jsx";
+import { AvisoCobranca } from "./telas/Cobranca.jsx";
 import { gravarOcultar, lerOcultar, Painel } from "./telas/Painel.jsx";
 import { Agenda, PendenciasSheet, SlotSheet } from "./telas/Agenda.jsx";
 import { Vagas } from "./telas/Vagas.jsx";
@@ -155,6 +156,8 @@ export default function App() {
   const ask = useCallback((msg, sim) => setConfirmar({ msg, sim }), []);
   // Só o uso real conversa com o banco: o modo teste nunca sobe nem baixa nada.
   const sync = useSincronia({ db, setDb, notify });
+  // relógio do aviso de cobrança: confere a cada 30 segundos e ao voltar para o app
+  const agoraCobranca = useAgora(30000);
   const substituir = useCallback((novo, msg) => {
     const atual = dbRef.current;
     if (atual) guardarCopiaAnterior(atual);
@@ -269,6 +272,12 @@ export default function App() {
                 <button className="mf-btn sm" onClick={() => trocarModo("real")}>Voltar ao uso real</button>
               </div>
             )}
+          </div>
+        )}
+
+        {db && cobrancasVencidas(db, agoraCobranca).length > 0 && (
+          <div className="mf-wrap" style={{ paddingBottom: 0 }}>
+            <AvisoCobranca db={db} update={update} notify={notify} agora={agoraCobranca} onVerLista={() => go("painel")} />
           </div>
         )}
 

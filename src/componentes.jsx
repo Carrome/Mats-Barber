@@ -4,7 +4,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Search, UserPlus, X } from "lucide-react";
 import { brl, digitos, formatarTel, hojeYmd, norm, PAGAMENTOS, r2, uid } from "./util.js";
-import { clienteDe, DIVIDIDO, montarOferta, partesPagamento } from "./regras.js";
+import { A_RECEBER, clienteDe, DIVIDIDO, montarOferta, partesPagamento } from "./regras.js";
 
 export function useLargo() {
   const q = "(min-width: 900px)";
@@ -265,7 +265,8 @@ export function ValoresDivididos({ emDinheiro, total, onChange }) {
 }
 
 // Pix, Dinheiro ou dividido entre os dois
-export function FormaPagamento({ pagamento, emDinheiro, total, onChange }) {
+// onDepois: mostra "Pagar depois" (marcado quando o atendimento está a receber)
+export function FormaPagamento({ pagamento, emDinheiro, total, onChange, onDepois }) {
   return (
     <div className="mf-stack" style={{ gap: 8 }}>
       <div className="mf-quick">
@@ -273,6 +274,7 @@ export function FormaPagamento({ pagamento, emDinheiro, total, onChange }) {
           <button type="button" key={p} className={pagamento === p ? "on" : ""}
             onClick={() => onChange({ pagamento: p, emDinheiro: p === DIVIDIDO ? partesPagamento(DIVIDIDO, emDinheiro, total).Dinheiro : 0 })}>{p}</button>
         ))}
+        {onDepois && <button type="button" className={pagamento === A_RECEBER ? "on" : ""} onClick={onDepois}>Pagar depois</button>}
       </div>
       {pagamento === DIVIDIDO && <ValoresDivididos emDinheiro={emDinheiro} total={total} onChange={(v) => onChange({ pagamento, emDinheiro: v })} />}
     </div>
