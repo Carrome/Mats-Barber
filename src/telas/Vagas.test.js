@@ -73,12 +73,12 @@ describe("imagem para stories", () => {
     const lista = [{ id: "a1", data: "2026-09-18", hora: "10:00", tipo: "oferta", campanhaId: "mattsflex", servicoId: "corte", valor: 35 }];
     const textos = () => chamadas.filter((c) => c.nome === "fillText").map((c) => c.args[0]);
     await desenharStory(baseVazia(), "2026-09-18", lista);
-    expect(textos()).toContain("CHAMA NO WHATSAPP");
+    expect(textos()).toContain("ME CHAMA NO WHATSAPP");
     expect(textos()).not.toContain("ME CHAMA NO DIRECT");
     chamadas = [];
     await desenharStory(baseVazia(), "2026-09-18", lista, lista, "instagram");
     expect(textos()).toContain("ME CHAMA NO DIRECT");
-    expect(textos()).not.toContain("CHAMA NO WHATSAPP");
+    expect(textos()).not.toContain("ME CHAMA NO WHATSAPP");
     expect(textos()).toContain("e garanta o seu antes que acabe");
   });
 

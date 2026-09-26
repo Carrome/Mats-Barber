@@ -171,7 +171,7 @@ export const MAX_STORY = 6;
 
 // onde a imagem vai ser postada, e a chamada do rodapé em cada lugar
 const REDES = [["whatsapp", "WhatsApp"], ["instagram", "Instagram"]];
-const CHAMADA = { whatsapp: "CHAMA NO WHATSAPP", instagram: "ME CHAMA NO DIRECT" };
+const CHAMADA = { whatsapp: "ME CHAMA NO WHATSAPP", instagram: "ME CHAMA NO DIRECT" };
 
 // `todos` são as ofertas do dia inteiro: o título sai delas, então não muda com a escolha
 export async function desenharStory(db, data, lista, todos = lista, rede = "whatsapp") {

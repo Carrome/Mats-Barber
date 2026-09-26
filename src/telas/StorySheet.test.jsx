@@ -79,7 +79,7 @@ describe("versão para WhatsApp ou Instagram", () => {
     abrir();
     expect(rede("WhatsApp").getAttribute("aria-checked")).toBe("true");
     expect(rede("Instagram").getAttribute("aria-checked")).toBe("false");
-    await waitFor(() => expect(ultima()).toContain("CHAMA NO WHATSAPP"));
+    await waitFor(() => expect(ultima()).toContain("ME CHAMA NO WHATSAPP"));
     const escolha = screen.getByText(/Escolha os horários da imagem/);
     const botoes = screen.getByRole("radiogroup", { name: "Onde vai postar" });
     expect(botoes.compareDocumentPosition(escolha) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -91,13 +91,13 @@ describe("versão para WhatsApp ou Instagram", () => {
     fireEvent.click(rede("Instagram"));
     expect(rede("Instagram").getAttribute("aria-checked")).toBe("true");
     await waitFor(() => expect(ultima()).toContain("ME CHAMA NO DIRECT"));
-    expect(ultima()).not.toContain("CHAMA NO WHATSAPP");
+    expect(ultima()).not.toContain("ME CHAMA NO WHATSAPP");
     expect(horasDaUltima()).toEqual(["09:00", "11:00"]);
     expect(chip("09:00").getAttribute("aria-pressed")).toBe("true");
     expect(chip("11:00").getAttribute("aria-pressed")).toBe("true");
 
     fireEvent.click(rede("WhatsApp"));
-    await waitFor(() => expect(ultima()).toContain("CHAMA NO WHATSAPP"));
+    await waitFor(() => expect(ultima()).toContain("ME CHAMA NO WHATSAPP"));
     expect(horasDaUltima()).toEqual(["09:00", "11:00"]);
   });
 });
