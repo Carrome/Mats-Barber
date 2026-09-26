@@ -2,7 +2,7 @@
    Acesso ao banco: sessão e leitura/gravação do retrato da barbearia
    ===================================================================== */
 import { createClient } from "@supabase/supabase-js";
-import { DOMINIO_LOGIN, SUPABASE_KEY, SUPABASE_URL } from "./config.js";
+import { CODIGO_SYNC, DOMINIO_LOGIN, SUPABASE_KEY, SUPABASE_URL } from "./config.js";
 
 export const cliente = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
@@ -49,28 +49,42 @@ export async function sessaoAtual() {
   }
 }
 
-const TABELA = "barbearia";
+/* ---------- retrato da barbearia, pelas funções do banco ----------
+   Sem login: cada chamada leva o código do app e o banco confere antes de
+   responder (sql/02-sem-login.sql). A tabela continua fechada para acesso direto. */
+const chamar = (funcao, args = {}) => cliente.rpc(funcao, { p_codigo: CODIGO_SYNC, ...args });
+
+// Só o número da versão (null = banco vazio): é a conferência frequente, e sai barata.
+export async function versaoNuvem() {
+  try {
+    const { data, error } = await chamar("mf_versao");
+    if (error) return { versao: null, erro: traduzirErro(error) };
+    return { versao: data == null ? null : Number(data) };
+  } catch (e) {
+    return { versao: null, erro: traduzirErro(e) };
+  }
+}
 
 export async function lerNuvem() {
   const vazio = { existe: false, versao: null, dados: null, em: null };
   try {
-    const { data, error } = await cliente.from(TABELA).select("versao, dados, atualizado_em").maybeSingle();
+    const { data, error } = await chamar("mf_ler");
     if (error) return { ...vazio, erro: traduzirErro(error) };
-    if (!data) return vazio;
-    return { existe: true, versao: data.versao, dados: data.dados, em: data.atualizado_em };
+    const linha = Array.isArray(data) ? data[0] : data;
+    if (!linha) return vazio;
+    return { existe: true, versao: Number(linha.versao), dados: linha.dados, em: linha.atualizado_em };
   } catch (e) {
     return { ...vazio, erro: traduzirErro(e) };
   }
 }
 
+// Cria a linha só se o banco ainda estiver vazio. existe: outro aparelho criou antes.
 export async function criarNuvem(dados, origem) {
   try {
-    const sessao = await sessaoAtual();
-    if (!sessao) return { ok: false, erro: "Sessão encerrada." };
-    const { data, error } = await cliente.from(TABELA)
-      .insert({ dono: sessao.user.id, dados, atualizado_por: origem })
-      .select("versao").single();
-    return error ? { ok: false, erro: traduzirErro(error) } : { ok: true, versao: data.versao };
+    const { data, error } = await chamar("mf_criar", { p_dados: dados, p_origem: origem });
+    if (error) return { ok: false, erro: traduzirErro(error) };
+    if (data == null) return { ok: false, existe: true };
+    return { ok: true, versao: Number(data) };
   } catch (e) {
     return { ok: false, erro: traduzirErro(e) };
   }
@@ -81,13 +95,10 @@ export async function criarNuvem(dados, origem) {
 // antes de insistir. O número novo quem escolhe é o gatilho, no servidor.
 export async function gravarNuvem(dados, versaoBase, origem) {
   try {
-    const { data, error } = await cliente.from(TABELA)
-      .update({ dados, atualizado_por: origem })
-      .eq("versao", versaoBase)
-      .select("versao");
+    const { data, error } = await chamar("mf_gravar", { p_dados: dados, p_base: versaoBase, p_origem: origem });
     if (error) return { ok: false, erro: traduzirErro(error) };
-    if (!data || data.length === 0) return { ok: false, conflito: true };
-    return { ok: true, versao: data[0].versao };
+    if (data == null) return { ok: false, conflito: true };
+    return { ok: true, versao: Number(data) };
   } catch (e) {
     return { ok: false, erro: traduzirErro(e) };
   }

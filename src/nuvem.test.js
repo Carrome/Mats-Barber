@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { emailDe, traduzirErro, entrar, sair, sessaoAtual, lerNuvem, criarNuvem, gravarNuvem } from "./nuvem.js";
+import { emailDe, traduzirErro, entrar, sair, sessaoAtual, lerNuvem, criarNuvem, gravarNuvem, versaoNuvem } from "./nuvem.js";
+import { CODIGO_SYNC } from "./config.js";
 import { cliente } from "./nuvem.js";
 
 describe("endereço interno do login", () => {
@@ -98,170 +99,118 @@ describe("autenticação", () => {
   });
 });
 
-describe("retrato da barbearia", () => {
-  // Imita a cadeia do Supabase a partir das linhas que a tabela devolveria.
-  // Os três jeitos de terminar a cadeia — await direto (o que gravarNuvem
-  // faz depois do .select(), sem singularizar), .maybeSingle() e .single()
-  // — resolvem formatos DIFERENTES a partir das mesmas linhas, do jeito que
-  // o cliente de verdade resolve. É isso que dá dentes ao mock para
-  // flagrar um .maybeSingle()/.single() removido por engano: antes, os três
-  // caminhos resolviam sempre o mesmo objeto fixo, e trocar de método não
-  // mudava nada que um teste pudesse perceber (ver "fidelidade do
-  // construtorMock" abaixo).
-  function construtorMock({ linhas = [], erro = null } = {}) {
-    // .single() exige exatamente uma linha: zero ou mais de uma viram erro.
-    const singularizar = () => {
-      if (erro) return { data: null, error: erro };
-      if (linhas.length === 1) return { data: linhas[0], error: null };
-      return { data: null, error: { message: "Nenhuma linha, ou mais de uma." } };
-    };
-    // .maybeSingle() é igual, mas trata zero linhas como sucesso vazio.
-    const singularizarOuVazio = () => {
-      if (erro) return { data: null, error: erro };
-      if (linhas.length === 0) return { data: null, error: null };
-      if (linhas.length === 1) return { data: linhas[0], error: null };
-      return { data: null, error: { message: "Mais de uma linha." } };
-    };
-    // Await direto na cadeia (sem singularizar): as linhas voltam como array.
-    const bruto = () => (erro ? { data: null, error: erro } : { data: linhas, error: null });
-
-    const construtor = {
-      select: vi.fn(() => construtor),
-      insert: vi.fn(() => construtor),
-      update: vi.fn(() => construtor),
-      eq: vi.fn(() => construtor),
-      maybeSingle: vi.fn(() => Promise.resolve(singularizarOuVazio())),
-      single: vi.fn(() => Promise.resolve(singularizar())),
-      then: (resolve, reject) => Promise.resolve(bruto()).then(resolve, reject),
-    };
-    return construtor;
-  }
+describe("retrato da barbearia (funções do banco)", () => {
+  // O app só fala com o banco por funções (sql/02-sem-login.sql). Cada teste
+  // define a resposta que a função devolveria.
+  const responde = (data, error = null) => { cliente.rpc = vi.fn().mockResolvedValue({ data, error }); };
+  const explode = () => { cliente.rpc = vi.fn(() => { throw new Error("Failed to fetch"); }); };
+  const semRede = { message: "Failed to fetch" };
 
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe("fidelidade do construtorMock", () => {
-    // Estes dois testes não chamam lerNuvem/criarNuvem: eles provam que o
-    // mock em si tem dentes para pegar a regressão apontada na revisão —
-    // um .maybeSingle() ou .single() removido por engano do código real.
-    it("await direto e .maybeSingle() resolvem formatos diferentes para zero linhas", async () => {
-      const construtor = construtorMock({ linhas: [] });
-      const semSingularizar = await construtor.select("versao, dados, atualizado_em");
-      const comMaybeSingle = await construtor.select("versao, dados, atualizado_em").maybeSingle();
-      // Sem singularizar (o que sobraria se .maybeSingle() fosse removido de
-      // lerNuvem), zero linhas voltam como array — "truthy" em JS. O teste
-      // "sem linha ainda" de lerNuvem só funciona porque .maybeSingle()
-      // vira null nesse caso; se virasse array, aquele teste quebraria.
-      expect(semSingularizar).toEqual({ data: [], error: null });
-      expect(comMaybeSingle).toEqual({ data: null, error: null });
+  describe("versaoNuvem", () => {
+    it("leva o código do app e devolve o número da versão", async () => {
+      responde(7);
+      expect(await versaoNuvem()).toEqual({ versao: 7 });
+      expect(cliente.rpc).toHaveBeenCalledWith("mf_versao", { p_codigo: CODIGO_SYNC });
     });
 
-    it("await direto e .single() resolvem formatos diferentes para zero linhas", async () => {
-      const construtor = construtorMock({ linhas: [] });
-      const semSingularizar = await construtor.insert({}).select("versao");
-      const comSingle = await construtor.insert({}).select("versao").single();
-      // Sem singularizar, zero linhas voltam como sucesso vazio; criarNuvem
-      // devolveria {ok:true, versao:undefined} em vez de reportar a falha
-      // real do insert. Com .single(), zero linhas viram erro.
-      expect(semSingularizar).toEqual({ data: [], error: null });
-      expect(comSingle.data).toBeNull();
-      expect(comSingle.error).toBeTruthy();
+    it("banco vazio devolve versão nula, sem erro", async () => {
+      responde(null);
+      const resultado = await versaoNuvem();
+      expect(resultado).toEqual({ versao: null });
+      expect("erro" in resultado).toBe(false);
+    });
+
+    it("falha de rede vira erro traduzido", async () => {
+      responde(null, semRede);
+      expect(await versaoNuvem()).toEqual({ versao: null, erro: "Sem conexão com a internet." });
+    });
+
+    it("trata exceção e devolve erro traduzido", async () => {
+      explode();
+      expect(await versaoNuvem()).toEqual({ versao: null, erro: "Sem conexão com a internet." });
     });
   });
 
   describe("lerNuvem", () => {
     it("devolve os dados quando a linha existe", async () => {
-      const registro = { versao: 4, dados: { clientes: [] }, atualizado_em: "2026-09-20T12:00:00Z" };
-      cliente.from = vi.fn().mockReturnValue(construtorMock({ linhas: [registro] }));
-      const resultado = await lerNuvem();
-      expect(resultado).toEqual({ existe: true, versao: 4, dados: { clientes: [] }, em: "2026-09-20T12:00:00Z" });
+      responde([{ versao: 4, dados: { clientes: [] }, atualizado_em: "2026-09-20T12:00:00Z", atualizado_por: "Android-ab12" }]);
+      expect(await lerNuvem()).toEqual({ existe: true, versao: 4, dados: { clientes: [] }, em: "2026-09-20T12:00:00Z" });
+      expect(cliente.rpc).toHaveBeenCalledWith("mf_ler", { p_codigo: CODIGO_SYNC });
     });
 
     it("distingue ausência de falha: sem linha ainda, existe:false e sem campo erro", async () => {
-      cliente.from = vi.fn().mockReturnValue(construtorMock({ linhas: [] }));
+      responde([]);
       const resultado = await lerNuvem();
       expect(resultado).toEqual({ existe: false, versao: null, dados: null, em: null });
       expect("erro" in resultado).toBe(false);
     });
 
     it("distingue ausência de falha: consulta com erro, existe:false com erro traduzido", async () => {
-      cliente.from = vi.fn().mockReturnValue(construtorMock({ erro: { message: "Failed to fetch" } }));
+      responde(null, semRede);
       const resultado = await lerNuvem();
       expect(resultado.existe).toBe(false);
       expect(resultado.erro).toBe("Sem conexão com a internet.");
     });
 
     it("trata exceção e devolve existe:false com erro traduzido", async () => {
-      cliente.from = vi.fn(() => { throw new Error("Failed to fetch"); });
-      const resultado = await lerNuvem();
-      expect(resultado).toEqual({ existe: false, versao: null, dados: null, em: null, erro: "Sem conexão com a internet." });
+      explode();
+      expect(await lerNuvem()).toEqual({ existe: false, versao: null, dados: null, em: null, erro: "Sem conexão com a internet." });
     });
   });
 
   describe("criarNuvem", () => {
-    it("recusa quando não há sessão, sem lançar", async () => {
-      cliente.auth.getSession = vi.fn().mockResolvedValue({ data: { session: null } });
-      const resultado = await criarNuvem({ clientes: [] }, "recepcao");
-      expect(resultado).toEqual({ ok: false, erro: "Sessão encerrada." });
-    });
-
-    it("grava dono e origem, devolvendo a versão inicial", async () => {
-      cliente.auth.getSession = vi.fn().mockResolvedValue({ data: { session: { user: { id: "abc-123" } } } });
-      const construtor = construtorMock({ linhas: [{ versao: 1 }] });
-      cliente.from = vi.fn().mockReturnValue(construtor);
-      const resultado = await criarNuvem({ clientes: [] }, "recepcao");
-      expect(construtor.insert).toHaveBeenCalledWith({ dono: "abc-123", dados: { clientes: [] }, atualizado_por: "recepcao" });
+    it("envia dados e origem com o código, e devolve a versão inicial", async () => {
+      responde(1);
+      const resultado = await criarNuvem({ clientes: [] }, "Android-ab12");
+      expect(cliente.rpc).toHaveBeenCalledWith("mf_criar", { p_codigo: CODIGO_SYNC, p_dados: { clientes: [] }, p_origem: "Android-ab12" });
       expect(resultado).toEqual({ ok: true, versao: 1 });
     });
 
-    it("devolve erro traduzido quando a inserção falha", async () => {
-      cliente.auth.getSession = vi.fn().mockResolvedValue({ data: { session: { user: { id: "abc-123" } } } });
-      cliente.from = vi.fn().mockReturnValue(construtorMock({ erro: { message: "Failed to fetch" } }));
-      const resultado = await criarNuvem({ clientes: [] }, "recepcao");
-      expect(resultado).toEqual({ ok: false, erro: "Sem conexão com a internet." });
+    it("outro aparelho criou antes: avisa que já existe, sem fingir sucesso", async () => {
+      responde(null);
+      expect(await criarNuvem({ clientes: [] }, "Android-ab12")).toEqual({ ok: false, existe: true });
+    });
+
+    it("devolve erro traduzido quando a chamada falha", async () => {
+      responde(null, semRede);
+      expect(await criarNuvem({ clientes: [] }, "Android-ab12")).toEqual({ ok: false, erro: "Sem conexão com a internet." });
     });
 
     it("trata exceção e devolve erro traduzido", async () => {
-      cliente.auth.getSession = vi.fn().mockResolvedValue({ data: { session: { user: { id: "abc-123" } } } });
-      cliente.from = vi.fn(() => { throw new Error("Failed to fetch"); });
-      const resultado = await criarNuvem({ clientes: [] }, "recepcao");
-      expect(resultado).toEqual({ ok: false, erro: "Sem conexão com a internet." });
+      explode();
+      expect(await criarNuvem({ clientes: [] }, "Android-ab12")).toEqual({ ok: false, erro: "Sem conexão com a internet." });
     });
   });
 
   describe("gravarNuvem", () => {
-    it("inclui a condição de versão (.eq) com o valor base exato recebido", async () => {
-      const construtor = construtorMock({ linhas: [{ versao: 5 }] });
-      cliente.from = vi.fn().mockReturnValue(construtor);
-      await gravarNuvem({ clientes: [] }, 3, "recepcao");
-      expect(cliente.from).toHaveBeenCalledWith("barbearia");
-      expect(construtor.update).toHaveBeenCalledWith({ dados: { clientes: [] }, atualizado_por: "recepcao" });
-      expect(construtor.eq).toHaveBeenCalledWith("versao", 3);
+    it("envia a versão base exata recebida", async () => {
+      responde(4);
+      await gravarNuvem({ clientes: [] }, 3, "iPhone-cd34");
+      expect(cliente.rpc).toHaveBeenCalledWith("mf_gravar", { p_codigo: CODIGO_SYNC, p_dados: { clientes: [] }, p_base: 3, p_origem: "iPhone-cd34" });
     });
 
-    it("relata conflito (sem gravar) quando nenhuma linha volta da condição de versão", async () => {
-      cliente.from = vi.fn().mockReturnValue(construtorMock({ linhas: [] }));
-      const resultado = await gravarNuvem({ clientes: [] }, 3, "recepcao");
-      expect(resultado).toEqual({ ok: false, conflito: true });
+    it("relata conflito (sem gravar) quando o banco já passou da versão base", async () => {
+      responde(null);
+      expect(await gravarNuvem({ clientes: [] }, 3, "iPhone-cd34")).toEqual({ ok: false, conflito: true });
     });
 
     it("devolve a nova versão (definida pelo gatilho no servidor) quando a gravação é aceita", async () => {
-      cliente.from = vi.fn().mockReturnValue(construtorMock({ linhas: [{ versao: 9 }] }));
-      const resultado = await gravarNuvem({ clientes: [] }, 8, "recepcao");
-      expect(resultado).toEqual({ ok: true, versao: 9 });
+      responde(9);
+      expect(await gravarNuvem({ clientes: [] }, 8, "iPhone-cd34")).toEqual({ ok: true, versao: 9 });
     });
 
-    it("devolve erro traduzido quando a consulta falha", async () => {
-      cliente.from = vi.fn().mockReturnValue(construtorMock({ erro: { message: "Failed to fetch" } }));
-      const resultado = await gravarNuvem({ clientes: [] }, 8, "recepcao");
-      expect(resultado).toEqual({ ok: false, erro: "Sem conexão com a internet." });
+    it("devolve erro traduzido quando a chamada falha", async () => {
+      responde(null, semRede);
+      expect(await gravarNuvem({ clientes: [] }, 8, "iPhone-cd34")).toEqual({ ok: false, erro: "Sem conexão com a internet." });
     });
 
     it("trata exceção e devolve erro traduzido", async () => {
-      cliente.from = vi.fn(() => { throw new Error("Failed to fetch"); });
-      const resultado = await gravarNuvem({ clientes: [] }, 8, "recepcao");
-      expect(resultado).toEqual({ ok: false, erro: "Sem conexão com a internet." });
+      explode();
+      expect(await gravarNuvem({ clientes: [] }, 8, "iPhone-cd34")).toEqual({ ok: false, erro: "Sem conexão com a internet." });
     });
   });
 });
