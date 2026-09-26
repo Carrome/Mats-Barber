@@ -16,20 +16,50 @@ export const pacoteDe = (db, id) => db.pacotes.find((p) => p.id === id);
 export const precoPlano = (db, p) =>
   r2((Number(p.qtd) || 0) * Math.max(0, (servicoDe(db, p.servicoId)?.preco || 0) - (Number(p.descontoPorUso) || 0)));
 
-export function precoCampanha(c, preco) {
+// "porServico": descontos[servicoId] é o R$ a menos daquele serviço; sem valor, preço cheio.
+// Os outros modos valem igual para qualquer serviço.
+export function precoCampanha(c, preco, servicoId) {
   if (!c) return r2(preco);
+  if (c.descontoTipo === "porServico") return r2(Math.max(0, preco - (Number(c.descontos?.[servicoId]) || 0)));
   const v = Number(c.descontoValor) || 0;
   if (c.descontoTipo === "valor") return r2(Math.max(0, preco - v));
   if (c.descontoTipo === "preco") return r2(Math.max(0, Math.min(preco, v)));
   return r2(Math.max(0, preco * (1 - (Number(c.descontoPct) || 0) / 100)));
 }
 
-export function rotuloDesconto(c) {
+// A campanha dá desconto neste serviço?
+export function campanhaCobre(c, servicoId) {
+  if (!c) return false;
+  if (c.descontoTipo === "porServico") return (Number(c.descontos?.[servicoId]) || 0) > 0;
+  return c.tipo !== "servico" || !c.servicoIds?.length || c.servicoIds.includes(servicoId);
+}
+
+const reais = (v) => String(v).replace(".", ",");
+export function rotuloDesconto(c, db) {
   if (!c) return "";
+  if (c.descontoTipo === "porServico") {
+    if (!db) return "desconto por serviço";
+    return db.servicos.filter((s) => campanhaCobre(c, s.id)).map((s) => `${s.nome} −R$ ${reais(Number(c.descontos[s.id]))}`).join(", ") || "sem desconto";
+  }
   const v = Number(c.descontoValor) || 0;
-  if (c.descontoTipo === "valor") return `R$ ${String(v).replace(".", ",")} off`;
-  if (c.descontoTipo === "preco") return `por R$ ${String(v).replace(".", ",")}`;
+  if (c.descontoTipo === "valor") return `R$ ${reais(v)} off`;
+  if (c.descontoTipo === "preco") return `por R$ ${reais(v)}`;
   return `${Number(c.descontoPct) || 0}% off`;
+}
+
+export const primeiroCoberto = (db, c) => db.servicos.find((s) => campanhaCobre(c, s.id))?.id;
+
+// Oferta com um ou mais serviços: cada um com o seu desconto, e quem não tem desconto
+// entra pelo preço cheio. O principal é o primeiro com desconto, na ordem da tabela;
+// os demais vão como adicionais. Sem nenhum serviço com desconto, não há oferta.
+export function montarOferta(db, c, ids) {
+  const servs = db.servicos.filter((s) => ids.includes(s.id));
+  const principal = servs.find((s) => campanhaCobre(c, s.id));
+  if (!principal) return null;
+  const preco = (s) => (campanhaCobre(c, s.id) ? precoCampanha(c, s.preco, s.id) : r2(s.preco));
+  const adicionais = servs.filter((s) => s !== principal).map((s) => ({ servicoId: s.id, valor: preco(s) }));
+  const valor = preco(principal);
+  return { servicoId: principal.id, valor, adicionais, total: r2(valor + soma(adicionais, (x) => x.valor)), cheio: r2(soma(servs, (s) => s.preco)) };
 }
 
 export const campanhaVale = (c, data) => !!c && c.ativa && (!c.inicio || data >= c.inicio) && (!c.fim || data <= c.fim);
@@ -189,8 +219,11 @@ export function valorAtendimento(db, a) {
 // quando o principal sai de um pacote ou de uma vaga Flex.
 export const adicionaisDe = (a) => (Array.isArray(a.adicionais) ? a.adicionais : []);
 export const valorAdicionais = (a) => r2(soma(adicionaisDe(a), (x) => Number(x.valor) || 0));
-export const nomeServicos = (db, a) =>
-  [a.servicoId, ...adicionaisDe(a).map((x) => x.servicoId)].map((id) => servicoDe(db, id)?.nome || "Serviço removido").join(" + ");
+export const idsServicos = (a) => [a.servicoId, ...adicionaisDe(a).map((x) => x.servicoId)];
+export const nomeServicos = (db, a) => idsServicos(a).map((id) => servicoDe(db, id)?.nome || "Serviço removido").join(" + ");
+// preço de uma oferta com os seus adicionais, e quanto seria sem desconto nenhum
+export const totalOferta = (a) => r2((Number(a.valor) || 0) + valorAdicionais(a));
+export const cheioDe = (db, a) => r2(soma(idsServicos(a), (id) => servicoDe(db, id)?.preco || 0));
 
 const pagaPrincipal = (a) => a.tipo === "avulso" || a.tipo === "campanha";
 const pagoNaHora = (a) => r2((pagaPrincipal(a) ? Number(a.valor) || 0 : 0) + valorAdicionais(a));

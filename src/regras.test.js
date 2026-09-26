@@ -3,6 +3,7 @@ import { baseVazia } from "./dados.js";
 import {
   avisosAjustes, capacidadeMes, capacidadePeriodo, comumFlex, DIVIDIDO, faturamentoMes, fatiasRosca, intervaloPeriodo, metaPeriodo, partesPagamento,
   recebidoNoDia, resumoPeriodo, rotuloPagamento, valorAdicionais, vendasPorServico,
+  campanhaCobre, cheioDe, idsServicos, montarOferta, precoCampanha, primeiroCoberto, rotuloDesconto, totalOferta,
   gradeDoDia, horasDoDia, horasLivresNoDia, pausaDoDia, vagasLivres,
 } from "./regras.js";
 
@@ -335,5 +336,80 @@ describe("horários do dia", () => {
     expect(pausaDoDia(db, "2026-09-17", "12:00")).toBe(null);
     db.config.pausas[0].ativa = true;
     expect(pausaDoDia(db, "2026-09-17", "12:00")).toMatchObject({ motivo: "Almoço" });
+  });
+});
+
+describe("desconto por serviço e ofertas com mais de um serviço", () => {
+  // Cabelo (corte) 45, Barba 25, Sobrancelha 5, Alisamento 60
+  const flex = (extra = {}) => ({ id: "mattsflex", nome: "Mats Flex", tipo: "vaga", descontoTipo: "porServico", descontos: { corte: 15, barba: 5 }, ativa: true, ...extra });
+
+  it("por serviço: cada serviço tem o seu desconto em R$; sem valor, preço cheio", () => {
+    expect(precoCampanha(flex(), 45, "corte")).toBe(30);
+    expect(precoCampanha(flex(), 25, "barba")).toBe(20);
+    expect(precoCampanha(flex(), 5, "sobrancelha")).toBe(5);
+    expect(precoCampanha(flex({ descontos: { corte: 50 } }), 45, "corte")).toBe(0);
+  });
+
+  it("os modos antigos continuam iguais", () => {
+    expect(precoCampanha({ descontoTipo: "valor", descontoValor: 10 }, 45, "corte")).toBe(35);
+    expect(precoCampanha({ descontoTipo: "pct", descontoPct: 20 }, 45, "corte")).toBe(36);
+    expect(precoCampanha({ descontoTipo: "preco", descontoValor: 30 }, 45, "corte")).toBe(30);
+  });
+
+  it("a campanha cobre um serviço quando dá desconto nele", () => {
+    expect(campanhaCobre(flex(), "corte")).toBe(true);
+    expect(campanhaCobre(flex(), "sobrancelha")).toBe(false);
+    expect(campanhaCobre({ tipo: "vaga", descontoTipo: "valor", descontoValor: 10 }, "sobrancelha")).toBe(true);
+    const deServicos = { tipo: "servico", descontoTipo: "pct", descontoPct: 10, servicoIds: ["barba"] };
+    expect(campanhaCobre(deServicos, "barba")).toBe(true);
+    expect(campanhaCobre(deServicos, "corte")).toBe(false);
+    expect(campanhaCobre({ ...deServicos, servicoIds: [] }, "corte")).toBe(true);
+    expect(campanhaCobre(null, "corte")).toBe(false);
+  });
+
+  it("o rótulo por serviço lista os descontos na ordem da tabela", () => {
+    const db = baseVazia();
+    expect(rotuloDesconto(flex({ descontos: { barba: 5, corte: 15 } }), db)).toBe("Cabelo −R$ 15, Barba −R$ 5");
+    expect(rotuloDesconto(flex(), undefined)).toBe("desconto por serviço");
+    expect(rotuloDesconto({ descontoTipo: "valor", descontoValor: 10 }, db)).toBe("R$ 10 off");
+  });
+
+  it("combo: cada serviço com o seu desconto, e a soma é o preço da oferta", () => {
+    const o = montarOferta(baseVazia(), flex(), ["barba", "corte"]);
+    expect(o).toEqual({ servicoId: "corte", valor: 30, adicionais: [{ servicoId: "barba", valor: 20 }], total: 50, cheio: 70 });
+  });
+
+  it("serviço sem desconto entra pelo preço cheio junto de um com desconto", () => {
+    const o = montarOferta(baseVazia(), flex(), ["corte", "sobrancelha"]);
+    expect(o).toMatchObject({ servicoId: "corte", valor: 30, adicionais: [{ servicoId: "sobrancelha", valor: 5 }], total: 35, cheio: 50 });
+  });
+
+  it("o principal é o primeiro serviço com desconto, mesmo que outro venha antes na tabela", () => {
+    const o = montarOferta(baseVazia(), flex({ descontos: { barba: 5 } }), ["corte", "barba"]);
+    expect(o).toMatchObject({ servicoId: "barba", valor: 20, adicionais: [{ servicoId: "corte", valor: 45 }], total: 65 });
+  });
+
+  it("sem nenhum serviço com desconto não existe oferta", () => {
+    expect(montarOferta(baseVazia(), flex(), ["sobrancelha"])).toBe(null);
+    expect(montarOferta(baseVazia(), flex(), [])).toBe(null);
+  });
+
+  it("nas campanhas antigas o desconto vale para cada serviço da oferta", () => {
+    const o = montarOferta(baseVazia(), { tipo: "vaga", descontoTipo: "pct", descontoPct: 20 }, ["corte", "barba"]);
+    expect(o).toMatchObject({ valor: 36, adicionais: [{ servicoId: "barba", valor: 20 }], total: 56, cheio: 70 });
+  });
+
+  it("primeiro serviço coberto pela campanha, para começar a escolha", () => {
+    expect(primeiroCoberto(baseVazia(), flex({ descontos: { barba: 5 } }))).toBe("barba");
+    expect(primeiroCoberto(baseVazia(), flex({ descontos: {} }))).toBe(undefined);
+  });
+
+  it("total, preço cheio e serviços de uma oferta gravada", () => {
+    const db = baseVazia();
+    const a = { servicoId: "corte", valor: 30, adicionais: [{ servicoId: "barba", valor: 20 }] };
+    expect(idsServicos(a)).toEqual(["corte", "barba"]);
+    expect(totalOferta(a)).toBe(50);
+    expect(cheioDe(db, a)).toBe(70);
+    expect(totalOferta({ servicoId: "corte", valor: 35 })).toBe(35);
   });
 });
