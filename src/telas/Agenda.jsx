@@ -11,10 +11,11 @@ import {
   nomeMes, PAGAMENTOS, parse, primeiroNome, r2, segundaDe, semanasDoMes, soma, uid, whats, ymd, iniciais, plural,
 } from "../util.js";
 import {
-  adicionaisDe, atendeNoDia, campanhaDe, campanhaVale, clienteDe, diaFechado, DIVIDIDO, gradeDoDia, horasDoDia, horasLivresNoDia, mapaAgenda, nomeServicos,
-  pacoteDe, pacotesUsaveis, pausaDoDia, pendentes, precoCampanha, rotuloDesconto, servicoDe, TIPOS_ATENDIMENTO, valorAdicionais,
+  adicionaisDe, atendeNoDia, campanhaCobre, campanhaDe, campanhaVale, cheioDe, clienteDe, diaFechado, DIVIDIDO, gradeDoDia, horasDoDia, horasLivresNoDia, mapaAgenda,
+  montarOferta, nomeServicos, pacoteDe, pacotesUsaveis, pausaDoDia, pendentes, precoCampanha, primeiroCoberto, rotuloDesconto, servicoDe, TIPOS_ATENDIMENTO,
+  totalOferta, valorAdicionais,
 } from "../regras.js";
-import { BarraSaldo, Campo, ClientePicker, FormaPagamento, NumInput, Seg, Sheet, Tag, TextoBlur, useAgora, useLargo, ValoresDivididos } from "../componentes.jsx";
+import { BarraSaldo, Campo, ClientePicker, FormaPagamento, NumInput, Seg, SeletorServicos, Sheet, Tag, TextoBlur, useAgora, useLargo, ValoresDivididos } from "../componentes.jsx";
 
 const nomeServico = (db, id) => servicoDe(db, id)?.nome || "Serviço removido";
 const nomesAdicionais = (db, a) => adicionaisDe(a).map((x) => ` + ${nomeServico(db, x.servicoId)}`).join("");
@@ -48,7 +49,7 @@ function Slot({ db, ag, hora, pausa, passado, foraGrade, onClick }) {
   const cli = ag.clienteId && clienteDe(db, ag.clienteId);
   const camp = ag.campanhaId && campanhaDe(db, ag.campanhaId);
   let cls = ag.tipo, t = cli?.nome || "Cliente", s = nomeServicos(db, ag);
-  if (ag.tipo === "oferta") { t = passado ? "Não vendida" : camp?.nome || "Oferta"; s = brl(ag.valor); if (passado) cls += " encerrada"; }
+  if (ag.tipo === "oferta") { t = passado ? "Não vendida" : camp?.nome || "Oferta"; s = brl(totalOferta(ag)); if (passado) cls += " encerrada"; }
   if (ag.tipo === "bloqueio") { t = ag.obs || "Bloqueado"; s = ""; }
   if (ag.tipo === "pacote") s = `${pacoteDe(db, ag.pacoteId)?.codigo || "Pacote"}${ag.deOferta ? " · Flex" : ""}${nomesAdicionais(db, ag)}`;
   if (ag.tipo === "campanha") s = `${camp?.nome || ""}${nomesAdicionais(db, ag)}`;
@@ -318,21 +319,28 @@ function NovoNoHorario({ db, update, notify, data, hora, onClose }) {
   const [repetir, setRepetir] = useState(0);
   const [vezes, setVezes] = useState(2);
   const [adicionais, setAdicionais] = useState([]);
-  const serv = servicoDe(db, servicoId);
+  const [idsOferta, setIdsOferta] = useState([]);
   const passado = momento(data, hora) < new Date();
 
   const pacotesCli = pacotesUsaveis(db, clienteId, data);
-  const campsServ = db.campanhas.filter((c) => c.tipo === "servico" && campanhaVale(c, data) && (!c.servicoIds?.length || c.servicoIds.includes(servicoId)));
+  const campsServ = db.campanhas.filter((c) => c.tipo === "servico" && campanhaVale(c, data) && campanhaCobre(c, servicoId));
   const campS = campsServ.find((c) => c.id === campServ);
   const campV = vagas.find((c) => c.id === campVaga);
+  // oferta: um ou mais serviços, cada um com o desconto da campanha; começa pelo primeiro que ela cobre
+  const padraoOferta = campV && primeiroCoberto(db, campV);
+  const idsOf = campV && montarOferta(db, campV, idsOferta) ? idsOferta : padraoOferta ? [padraoOferta] : [];
+  const oferta = modo === "ofertar" && campV ? montarOferta(db, campV, idsOf) : null;
+  const serv = servicoDe(db, oferta ? oferta.servicoId : servicoId);
 
   let valor = serv?.preco || 0;
   if (modo === "agendar" && forma === "pacote") valor = 0;
-  if (modo === "agendar" && forma === "campanha") valor = campS ? precoCampanha(campS, valor) : valor;
-  if (modo === "ofertar") valor = campV ? precoCampanha(campV, valor) : valor;
+  if (modo === "agendar" && forma === "campanha") valor = campS ? precoCampanha(campS, valor, servicoId) : valor;
+  if (modo === "ofertar") valor = oferta ? oferta.valor : valor;
   if (valorManual !== null && modo !== "bloquear" && forma !== "pacote") valor = r2(valorManual);
+  // adicionais que entram no total: os escolhidos no agendamento, ou os do combo da oferta
+  const extras = modo === "ofertar" ? oferta?.adicionais || [] : modo === "agendar" ? adicionais : [];
 
-  const podeSalvar = modo === "bloquear" || (modo === "ofertar" && campV && serv) ||
+  const podeSalvar = modo === "bloquear" || (modo === "ofertar" && oferta) ||
     (modo === "agendar" && clienteId && ((forma === "avulso" && serv) || (forma === "pacote" && pacoteId) || (forma === "campanha" && campS && serv)));
 
   const salvarAg = () => {
@@ -340,7 +348,7 @@ function NovoNoHorario({ db, update, notify, data, hora, onClose }) {
     const base = { id: uid(), data, hora, status: "agendado", pagamento: "", obs: "", criadoEm: new Date().toISOString(), adicionais: modo === "agendar" ? adicionais : [] };
     let novo;
     if (modo === "bloquear") novo = { ...base, tipo: "bloqueio", valor: 0, obs: motivo || "Bloqueado" };
-    else if (modo === "ofertar") novo = { ...base, tipo: "oferta", campanhaId: campVaga, servicoId, valor };
+    else if (modo === "ofertar") novo = { ...base, tipo: "oferta", campanhaId: campVaga, servicoId: oferta.servicoId, valor, adicionais: oferta.adicionais.map((x) => ({ ...x })) };
     else if (forma === "pacote") {
       const p = pacoteDe(db, pacoteId);
       novo = { ...base, tipo: "pacote", clienteId, pacoteId, servicoId: p.servicoId, valor: 0 };
@@ -436,11 +444,11 @@ function NovoNoHorario({ db, update, notify, data, hora, onClose }) {
             </select>
           )}
         </Campo>
-        <Campo label="Serviço">
-          <select className="mf-input" value={servicoId} onChange={(e) => setServicoId(e.target.value)}>
-            {db.servicos.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
-          </select>
-        </Campo>
+        {campV && (
+          <Campo label="Serviços da oferta">
+            <SeletorServicos db={db} camp={campV} ids={idsOf} onChange={(ids) => { setIdsOferta(ids); setValorManual(null); }} mostrarPreco={false} />
+          </Campo>
+        )}
       </>)}
       {modo === "bloquear" && (
         <Campo label="Motivo" dica="Para almoço ou horários que se repetem toda semana, use Ajustes > Pausas.">
@@ -450,7 +458,7 @@ function NovoNoHorario({ db, update, notify, data, hora, onClose }) {
       {modo !== "bloquear" && (
         <div className="mf-panel" style={{ padding: 12 }}>
           <div className="mf-row mf-between">
-            <span className="sub">Valor</span>
+            <span className="sub">{modo === "ofertar" && extras.length ? `Valor (${serv?.nome})` : "Valor"}</span>
             <span className="mf-row">
               {valor !== (serv?.preco || 0) && forma !== "pacote" && <span className="mf-strike">{brl(serv?.preco)}</span>}
               <span className="mf-price" style={{ fontSize: 28 }}>{modo === "agendar" && forma === "pacote" ? "Já pago" : brl(valor)}</span>
@@ -461,10 +469,10 @@ function NovoNoHorario({ db, update, notify, data, hora, onClose }) {
               ? <button type="button" className="mf-link" style={{ fontSize: 13 }} onClick={() => setValorManual(valor)}>Ajustar valor</button>
               : <div className="mf-row" style={{ marginTop: 8 }}><span className="sub">R$</span><NumInput value={valorManual} onChange={setValorManual} min={0} style={{ maxWidth: 120 }} aria-label="Valor" /><button type="button" className="mf-link" onClick={() => setValorManual(null)}>Voltar ao preço</button></div>
           )}
-          {modo === "agendar" && adicionais.length > 0 && (
+          {extras.length > 0 && (
             <div className="mf-row mf-between" style={{ marginTop: 8 }}>
-              <span className="sub">{forma === "pacote" ? "A pagar na hora" : "Total"}</span>
-              <b>{brl(r2((forma === "pacote" ? 0 : valor) + soma(adicionais, (x) => x.valor)))}</b>
+              <span className="sub">{modo === "agendar" && forma === "pacote" ? "A pagar na hora" : modo === "ofertar" ? `Total (${nomeServicos(db, { servicoId: serv?.id, adicionais: extras })})` : "Total"}</span>
+              <b>{brl(r2((modo === "agendar" && forma === "pacote" ? 0 : valor) + soma(extras, (x) => x.valor)))}</b>
             </div>
           )}
         </div>
@@ -509,19 +517,22 @@ function DetalheAgendamento({ db, update, notify, ask, abrir, ag, onClose }) {
     const passou = momento(ag.data, ag.hora) < new Date();
     const pacs = pacotesUsaveis(db, clienteId, ag.data);
     const ok = clienteId && (comoPagou === "oferta" || pacoteId);
+    const total = totalOferta(ag), cheio = cheioDe(db, ag);
+    // os serviços da oferta vão junto com a venda, e voltam com ela se a venda for desfeita
+    const combo = { adicionais: adicionaisDe(ag).map((x) => ({ ...x })), adicionaisOferta: adicionaisDe(ag).map((x) => ({ ...x })) };
     return (
       <div className="mf-stack">
         <div className="mf-panel mf-row mf-between">
-          <div><b>{camp?.nome || "Vaga em oferta"}</b><p className="sub">{serv?.nome}{passou ? ", horário já passou sem venda" : ""}</p></div>
+          <div><b>{camp?.nome || "Vaga em oferta"}</b><p className="sub">{nomeServicos(db, ag)}{passou ? ", horário já passou sem venda" : ""}</p></div>
           <span className="mf-row">
-            {serv && serv.preco !== ag.valor && <span className="mf-strike">{brl(serv.preco)}</span>}
-            <span className="mf-price" style={{ fontSize: 28, color: "var(--poste-tx)" }}>{brl(ag.valor)}</span>
+            {cheio > total && <span className="mf-strike">{brl(cheio)}</span>}
+            <span className="mf-price" style={{ fontSize: 28, color: "var(--poste-tx)" }}>{brl(total)}</span>
           </span>
         </div>
         <Campo label="Quem comprou a vaga?"><ClientePicker db={db} update={update} valor={clienteId} onChange={(id) => { setClienteId(id); setPacoteId(null); setComoPagou("oferta"); }} /></Campo>
         {clienteId && pacs.length > 0 && (
           <Campo label="Como pagou">
-            <Seg valor={comoPagou} onChange={setComoPagou} opcoes={[["oferta", `Preço da vaga (${brl(ag.valor)})`], ["pacote", "Pacote Flex"]]} />
+            <Seg valor={comoPagou} onChange={setComoPagou} opcoes={[["oferta", `Preço da vaga (${brl(total)})`], ["pacote", "Pacote Flex"]]} />
           </Campo>
         )}
         {comoPagou === "pacote" && (
@@ -537,8 +548,8 @@ function DetalheAgendamento({ db, update, notify, ask, abrir, ag, onClose }) {
         <button className="mf-btn poste full" disabled={!ok} onClick={() => {
           if (comoPagou === "pacote") {
             const p = pacoteDe(db, pacoteId);
-            mudar({ tipo: "pacote", clienteId, pacoteId, servicoId: p.servicoId, valorOferta: ag.valor, valor: 0, deOferta: true });
-          } else mudar({ tipo: "campanha", clienteId, deOferta: true, valorOferta: ag.valor });
+            mudar({ tipo: "pacote", clienteId, pacoteId, servicoId: p.servicoId, valorOferta: ag.valor, valor: 0, deOferta: true, ...combo });
+          } else mudar({ tipo: "campanha", clienteId, deOferta: true, valorOferta: ag.valor, ...combo });
           notify("Vaga vendida");
           onClose();
         }}>Vender vaga</button>
@@ -575,7 +586,7 @@ function DetalheAgendamento({ db, update, notify, ask, abrir, ag, onClose }) {
             {editavel ? (
               <select className="mf-input" style={{ maxWidth: 210, padding: "6px 10px" }} value={ag.servicoId} onChange={(e) => {
                 const s = servicoDe(db, e.target.value);
-                mudar({ servicoId: e.target.value, valor: ag.tipo === "campanha" ? precoCampanha(camp, s?.preco || 0) : s?.preco || 0 });
+                mudar({ servicoId: e.target.value, valor: ag.tipo === "campanha" ? precoCampanha(camp, s?.preco || 0, s?.id) : s?.preco || 0 });
               }}>
                 {db.servicos.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
               </select>
@@ -613,7 +624,7 @@ function DetalheAgendamento({ db, update, notify, ask, abrir, ag, onClose }) {
           ask(`Desfazer a venda da vaga para ${cli?.nome || "cliente"} (${ddmm(ag.data)} às ${ag.hora})? O horário volta a ser oferta.${aviso}`, () => {
             update((d) => {
               const a = d.agendamentos.find((x) => x.id === ag.id);
-              if (a) Object.assign(a, { tipo: "oferta", clienteId: null, pacoteId: null, status: "agendado", deOferta: false, pagamento: "", valor: ag.valorOferta ?? ag.valor, servicoId: ag.servicoId, adicionais: [] });
+              if (a) Object.assign(a, { tipo: "oferta", clienteId: null, pacoteId: null, status: "agendado", deOferta: false, pagamento: "", valor: ag.valorOferta ?? ag.valor, servicoId: ag.servicoId, adicionais: (ag.adicionaisOferta || []).map((x) => ({ ...x })) });
               return d;
             }, true);
             notify("Venda desfeita, vaga voltou para oferta", true);

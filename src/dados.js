@@ -291,7 +291,7 @@ export function criarDemo() {
   const usar = (pac, dias, status) => {
     const data = ymd(diaUtil(addDays(hoje, dias)));
     const hora = horaLivre(data);
-    if (hora) add({ data, hora, tipo: "pacote", pacoteId: pac.id, clienteId: pac.clienteId, servicoId: pac.servicoId, valor: 0, status, campanhaId: camp.id, deOferta: true, valorOferta: precoCampanha(camp, 45) });
+    if (hora) add({ data, hora, tipo: "pacote", pacoteId: pac.id, clienteId: pac.clienteId, servicoId: pac.servicoId, valor: 0, status, campanhaId: camp.id, deOferta: true, valorOferta: precoCampanha(camp, 45, "corte") });
   };
   const p1 = vender("c1", "flex3", 40, "Pix");
   const p2 = vender("c13", "flex5", 9, "Dinheiro");
@@ -308,7 +308,7 @@ export function criarDemo() {
       if (ocupado.has(`${data} ${hora}`) || pausaEm(cfg, data, hora)) return;
       const r = rnd();
       const passado = momento(data, hora) < hoje;
-      const valor = precoCampanha(camp, 45);
+      const valor = precoCampanha(camp, 45, "corte");
       if (passado && r < 0.07) add({ data, hora, tipo: "campanha", campanhaId: camp.id, clienteId: pick(db.clientes).id, servicoId: "corte", valor, status: "concluido", pagamento: pick(PAGAMENTOS), deOferta: true, valorOferta: valor });
       else if (passado && r < 0.1) add({ data, hora, tipo: "oferta", campanhaId: camp.id, servicoId: "corte", valor, status: "agendado" });
       else if (!passado && data >= hojeS && r < 0.12) add({ data, hora, tipo: "oferta", campanhaId: camp.id, servicoId: "corte", valor, status: "agendado" });

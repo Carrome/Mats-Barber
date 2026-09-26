@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { Agenda, PendenciasSheet, SlotSheet } from "./Agenda.jsx";
 import { baseVazia } from "../dados.js";
 
@@ -192,5 +192,60 @@ describe("horários do dia", () => {
     const abrir = { agenda: vi.fn(), aba: vi.fn(), cliente: vi.fn(), pacote: vi.fn(), horario: vi.fn(), pendencias: vi.fn() };
     render(<Agenda db={db} update={vi.fn()} notify={vi.fn()} ask={vi.fn()} abrir={abrir} dataInicial={DIA} />);
     expect(screen.getByRole("button", { name: /12:00 Almoço/ })).toBeTruthy();
+  });
+});
+
+describe("oferta com mais de um serviço", () => {
+  // Mats Flex com R$ 15 no cabelo e R$ 5 na barba; 10/01/2030 é uma quinta-feira
+  const dbFlex = () => {
+    const db = baseVazia();
+    Object.assign(db.campanhas.find((c) => c.id === "mattsflex"), { descontoTipo: "porServico", descontos: { corte: 15, barba: 5 } });
+    db.clientes.push({ id: "c1", nome: "João Silva", telefone: "" });
+    return db;
+  };
+  const combo = { servicoId: "corte", valor: 30, adicionais: [{ servicoId: "barba", valor: 20 }] };
+  const dbComOferta = () => {
+    const db = dbFlex();
+    db.agendamentos.push({ id: "o1", data: "2030-01-10", hora: "10:00", tipo: "oferta", campanhaId: "mattsflex", ...combo, status: "agendado", pagamento: "", obs: "" });
+    return db;
+  };
+  const abrirSlot = (db, hora = "10:00") => {
+    const props = { db, update: vi.fn(), notify: vi.fn(), ask: vi.fn(), abrir: { cliente: vi.fn() }, onClose: vi.fn() };
+    render(<SlotSheet {...props} data="2030-01-10" hora={hora} />);
+    return props;
+  };
+
+  it("ofertar vaga pela agenda com cabelo + barba grava o combo com o desconto de cada um", () => {
+    const p = abrirSlot(dbFlex(), "11:00");
+    fireEvent.click(screen.getByRole("radio", { name: "Ofertar vaga" }));
+    const servicos = screen.getByRole("group", { name: "Serviços da oferta" });
+    fireEvent.click(within(servicos).getByRole("button", { name: "Barba" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ofertar vaga" }));
+    const [fn] = p.update.mock.calls[0];
+    const nova = fn(dbFlex()).agendamentos.find((a) => a.hora === "11:00");
+    expect(nova).toMatchObject({ tipo: "oferta", campanhaId: "mattsflex", ...combo });
+  });
+
+  it("a tela da oferta mostra os serviços e o total, e vender mantém o combo", () => {
+    const p = abrirSlot(dbComOferta());
+    expect(screen.getByText(/Cabelo \+ Barba/)).toBeTruthy();
+    expect(document.body.textContent).toMatch(/R\$\s*50,00/);
+    fireEvent.click(screen.getByRole("button", { name: /João Silva/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Vender vaga" }));
+    const [fn] = p.update.mock.calls[0];
+    const vendida = fn(dbComOferta()).agendamentos[0];
+    expect(vendida).toMatchObject({ tipo: "campanha", clienteId: "c1", deOferta: true, valor: 30, valorOferta: 30, adicionais: combo.adicionais, adicionaisOferta: combo.adicionais });
+  });
+
+  it("desfazer a venda devolve a oferta com os mesmos serviços", () => {
+    const db = dbFlex();
+    db.agendamentos.push({ id: "o1", data: "2030-01-10", hora: "10:00", tipo: "campanha", campanhaId: "mattsflex", clienteId: "c1", deOferta: true, valorOferta: 30, adicionaisOferta: combo.adicionais,
+      servicoId: "corte", valor: 30, adicionais: [...combo.adicionais, { servicoId: "sobrancelha", valor: 5 }], status: "agendado", pagamento: "", obs: "" });
+    const p = abrirSlot(db);
+    fireEvent.click(screen.getByText("Desfazer venda da vaga"));
+    p.ask.mock.calls[0][1]();
+    const [fn] = p.update.mock.calls[0];
+    // a sobrancelha foi pedida pelo cliente na hora: não faz parte da oferta
+    expect(fn(structuredClone(db)).agendamentos[0]).toMatchObject({ tipo: "oferta", clienteId: null, valor: 30, adicionais: combo.adicionais });
   });
 });

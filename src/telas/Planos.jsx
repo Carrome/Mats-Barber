@@ -396,7 +396,7 @@ export function PacoteDetalhe({ db, update, notify, ask, abrir, pacote, onClose 
               d.agendamentos = d.agendamentos.flatMap((a) => {
                 if (!ids.has(a.id)) return [a];
                 // horário Flex vendido com pacote volta a ser oferta; os demais são liberados
-                return a.deOferta ? [{ ...a, tipo: "oferta", clienteId: null, pacoteId: null, deOferta: false, valor: a.valorOferta ?? 0 }] : [];
+                return a.deOferta ? [{ ...a, tipo: "oferta", clienteId: null, pacoteId: null, deOferta: false, valor: a.valorOferta ?? 0, adicionais: (a.adicionaisOferta || []).map((x) => ({ ...x })) }] : [];
               });
               return d;
             }, true);
