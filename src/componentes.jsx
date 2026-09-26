@@ -3,8 +3,8 @@
    ===================================================================== */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Search, UserPlus, X } from "lucide-react";
-import { digitos, formatarTel, hojeYmd, norm, PAGAMENTOS, r2, uid } from "./util.js";
-import { clienteDe, DIVIDIDO, partesPagamento } from "./regras.js";
+import { brl, digitos, formatarTel, hojeYmd, norm, PAGAMENTOS, r2, uid } from "./util.js";
+import { clienteDe, DIVIDIDO, montarOferta, partesPagamento } from "./regras.js";
 
 export function useLargo() {
   const q = "(min-width: 900px)";
@@ -79,6 +79,30 @@ export function Seg({ opcoes, valor, onChange, rotulo }) {
       {opcoes.map(([v, l]) => (
         <button key={v} type="button" role="radio" aria-checked={valor === v} className={valor === v ? "on" : ""} onClick={() => onChange(v)}>{l}</button>
       ))}
+    </div>
+  );
+}
+
+// Serviços de uma oferta: um ou mais, cada um com o desconto da campanha (quem não
+// tem desconto entra pelo preço cheio). Não deixa tirar o último com desconto, senão
+// a oferta deixaria de existir.
+export function SeletorServicos({ db, camp, ids, onChange, rotulo, mostrarPreco = true }) {
+  const oferta = montarOferta(db, camp, ids);
+  const alternar = (id) => {
+    const novo = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
+    if (montarOferta(db, camp, novo)) onChange(novo);
+  };
+  return (
+    <div className="mf-stack" style={{ gap: 6 }}>
+      <div className="mf-chips quebra" role={rotulo ? "group" : undefined} aria-label={rotulo}>
+        {db.servicos.map((s) => {
+          const on = ids.includes(s.id);
+          return <button key={s.id} type="button" className={"mf-chip" + (on ? " on" : "")} aria-pressed={on} onClick={() => alternar(s.id)}>{s.nome}</button>;
+        })}
+      </div>
+      {mostrarPreco && oferta && (
+        <small>{oferta.cheio > oferta.total && <><span className="mf-strike">{brl(oferta.cheio)}</span> </>}<b>{brl(oferta.total)}</b></small>
+      )}
     </div>
   );
 }

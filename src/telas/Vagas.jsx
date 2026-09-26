@@ -4,8 +4,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Copy, Image as ImageIcon, Megaphone, MessageCircle, Share2, X, Download } from "lucide-react";
 import { addDays, brl, dataLonga, DIAS_LONGO, ddmm, entregarArquivo, hojeYmd, momento, parse, plural, uid, whats, ymd, fimMesYmd } from "../util.js";
-import { campanhaDe, campanhaVale, precoCampanha, rotuloDesconto, servicoDe, vagasLivres } from "../regras.js";
-import { Campo, Seg, Sheet, useAgora } from "../componentes.jsx";
+import { campanhaDe, campanhaVale, cheioDe, montarOferta, nomeServicos, primeiroCoberto, rotuloDesconto, servicoDe, totalOferta, vagasLivres } from "../regras.js";
+import { Campo, Seg, SeletorServicos, Sheet, useAgora } from "../componentes.jsx";
 
 export function Vagas({ db, update, notify }) {
   const agora = useAgora();
@@ -15,12 +15,14 @@ export function Vagas({ db, update, notify }) {
   const ate = periodo === "hoje" ? hoje : periodo === "semana" ? ymd(addDays(new Date(), 6)) : periodo === "mes" ? fimMes : ymd(addDays(new Date(), 30));
   const campanhas = db.campanhas.filter((c) => c.tipo === "vaga" && campanhaVale(c, hoje));
   const [campId, setCampId] = useState(campanhas[0]?.id || "");
-  const [servId, setServId] = useState(db.servicos[0]?.id);
+  const [ids, setIds] = useState([]);
   const [msg, setMsg] = useState(null);
   const [story, setStory] = useState(null);
   const camp = campanhas.find((c) => c.id === campId) || campanhas[0];
-  const serv = servicoDe(db, servId) || db.servicos[0];
-  const precoFlex = serv && camp ? precoCampanha(camp, serv.preco) : 0;
+  // serviços da próxima oferta; se a campanha não cobre nenhum deles, começa pelo primeiro que ela cobre
+  const padrao = camp ? primeiroCoberto(db, camp) : undefined;
+  const idsOferta = camp && montarOferta(db, camp, ids) ? ids : padrao ? [padrao] : [];
+  const oferta = camp ? montarOferta(db, camp, idsOferta) : null;
 
   const livres = useMemo(() => vagasLivres(db, hoje, ate, agora), [db, hoje, ate, agora]);
   const porDia = livres.reduce((m, v) => { (m[v.data] = m[v.data] || []).push(v.hora); return m; }, {});
@@ -29,12 +31,15 @@ export function Vagas({ db, update, notify }) {
   const ofPorDia = ofertadas.reduce((m, a) => { (m[a.data] = m[a.data] || []).push(a); return m; }, {});
 
   const ofertar = (lista) => {
-    if (!camp || !serv) return;
+    if (!oferta) return;
     let n = 0;
     update((d) => {
       lista.forEach(({ data, hora }) => {
         if (!d.agendamentos.some((a) => a.data === data && a.hora === hora)) {
-          d.agendamentos.push({ id: uid(), data, hora, tipo: "oferta", campanhaId: camp.id, servicoId: serv.id, valor: precoFlex, status: "agendado", pagamento: "", obs: "", criadoEm: new Date().toISOString() });
+          d.agendamentos.push({
+            id: uid(), data, hora, tipo: "oferta", campanhaId: camp.id, servicoId: oferta.servicoId, valor: oferta.valor,
+            adicionais: oferta.adicionais.map((x) => ({ ...x })), status: "agendado", pagamento: "", obs: "", criadoEm: new Date().toISOString(),
+          });
           n++;
         }
       });
@@ -46,8 +51,8 @@ export function Vagas({ db, update, notify }) {
   const mensagem = (data, lista) => {
     const nomesC = [...new Set(lista.map((a) => campanhaDe(db, a.campanhaId)?.nome).filter(Boolean))].join(" / ");
     const linhas = lista.map((a) => {
-      const s = servicoDe(db, a.servicoId);
-      return `• ${a.hora} – ${s?.nome} de ~${brl(s?.preco)}~ por *${brl(a.valor)}*`;
+      const cheio = cheioDe(db, a), total = totalOferta(a);
+      return `• ${a.hora} – ${nomeServicos(db, a)}${cheio > total ? ` de ~${brl(cheio)}~` : ""} por *${brl(total)}*`;
     }).join("\n");
     const quando = data === hoje ? "Hoje" : data === ymd(addDays(new Date(), 1)) ? "Amanhã" : dataLonga(data);
     return `✂️ *${nomesC || "Horário com desconto"}* – ${db.config.nome}\n${quando} (${ddmm(data)}) tenho horário com preço especial:\n${linhas}\n\nResponda esta mensagem para garantir o seu. Vale só para esses horários!`;
@@ -75,15 +80,15 @@ export function Vagas({ db, update, notify }) {
             </select>
           )}
         </Campo>
-        <Campo label="Serviço ofertado">
-          <select className="mf-input" value={serv?.id} onChange={(e) => setServId(e.target.value)}>
-            {db.servicos.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
-          </select>
+        <Campo label="Serviços da oferta">
+          {camp ? <SeletorServicos db={db} camp={camp} ids={idsOferta} onChange={setIds} mostrarPreco={false} /> : <small>Escolha uma campanha.</small>}
         </Campo>
-        <div className="mf-row" style={{ gap: 14 }}>
-          <span className="mf-strike">{brl(serv?.preco)}</span>
-          <span className="mf-price" style={{ color: "var(--poste-tx)" }}>{brl(precoFlex)}</span>
-        </div>
+        {oferta && (
+          <div className="mf-row" style={{ gap: 14 }}>
+            {oferta.cheio > oferta.total && <span className="mf-strike">{brl(oferta.cheio)}</span>}
+            <span className="mf-price" style={{ color: "var(--poste-tx)" }}>{brl(oferta.total)}</span>
+          </div>
+        )}
       </section>
 
       {ofertadas.length > 0 && (
@@ -104,7 +109,7 @@ export function Vagas({ db, update, notify }) {
                   </div>
                   <div className="mf-row mf-wrapr" style={{ gap: 6 }}>
                     {lista.map((a) => (
-                      <span key={a.id} className="mf-slotpill of">{a.hora} <small>{brl(a.valor)}</small>
+                      <span key={a.id} className="mf-slotpill of" title={nomeServicos(db, a)}>{a.hora} <small>{brl(totalOferta(a))}</small>
                         <button className="mf-iconbtn" style={{ padding: 3 }} aria-label={`Retirar oferta das ${a.hora}`} onClick={() => {
                           update((dd) => { dd.agendamentos = dd.agendamentos.filter((x) => x.id !== a.id); return dd; }, true);
                           notify("Oferta retirada", true);
@@ -129,14 +134,14 @@ export function Vagas({ db, update, notify }) {
               <div key={data}>
                 <div className="mf-row mf-between" style={{ marginBottom: 6 }}>
                   <b>{dataLonga(data)} <small>({horasD.length})</small></b>
-                  <button className="mf-btn sm poste" disabled={!camp} onClick={() => ofertar(horasD.map((hora) => ({ data, hora })))}>
+                  <button className="mf-btn sm poste" disabled={!oferta} onClick={() => ofertar(horasD.map((hora) => ({ data, hora })))}>
                     <Megaphone size={14} />Ofertar todas
                   </button>
                 </div>
                 <div className="mf-row mf-wrapr" style={{ gap: 6 }}>
                   {horasD.map((hora) => (
                     <span key={hora} className="mf-slotpill">{hora}
-                      <button className="mf-btn sm alt" style={{ padding: "3px 10px" }} disabled={!camp} onClick={() => ofertar([{ data, hora }])}>Ofertar</button>
+                      <button className="mf-btn sm alt" style={{ padding: "3px 10px" }} disabled={!oferta} onClick={() => ofertar([{ data, hora }])}>Ofertar</button>
                     </span>
                   ))}
                 </div>
